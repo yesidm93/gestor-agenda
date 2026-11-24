@@ -798,3 +798,7 @@ dialog:has(.formulario.ancho) { width: min(720px, calc(100vw - 32px)); }
 .sub-agregar input { flex: 1; min-width: 0; min-height: 38px; padding: 6px 10px; border: 1px dashed var(--linea); border-radius: 9px; background: var(--papel); }
 .sub-agregar input:focus { outline: none; border-color: var(--enfoque); border-style: solid; }
 @media (max-width: 899px) { .subtareas { padding-left: 38px; } }
+
+/* Chips de categorías (celular) */
+.chips-cat { margin-top: 6px; }
+.chips-cat .filtro { height: 30px; font-weight: 700; }

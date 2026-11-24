@@ -7,7 +7,7 @@ PWA para organizar el día: **tareas con recordatorios, hábitos, notas y finanz
 | Sección | Qué hace |
 |---|---|
 | **Hoy** | Tareas del día y atrasadas, progreso, hábitos que tocan hoy. Captura rápida: `Calificar parcial mañana 3pm #docencia !` |
-| **Tareas** | Filtros (próximas, hoy, todas, sin fecha, hechas), áreas con color, prioridad, hora, repetición (diaria, lunes a viernes, semanal, mensual) |
+| **Tareas** | Filtros (próximas, hoy, todas, sin fecha, hechas), **categorías** con color (Pagos, Personal, Universidad, Maestría, Casa… editables), **subtareas** con avance, prioridad, hora, repetición (diaria, lunes a viernes, semanal, mensual) |
 | **Recordatorios** | Aviso el mismo día o días antes, a una hora. Se repite (30 min, 1 h, 3 h o diario) **hasta que marques la tarea como hecha**. Botones *Marcar hecha* y *Posponer 1 h* en la notificación; más opciones al abrirla |
 | **Pagos** | Una tarea puede tener *Valor a pagar*: al marcarla hecha pregunta cuánto pagaste y lo registra como gasto. Si es mensual, pasa sola al mes siguiente con su aviso |
 | **Finanzas** | Saldo inicial (cuánto tienes hoy) y **Disponible** acumulado: saldo + ingresos − gastos. Gastos e ingresos por mes con categorías y comparación. **Deudas** que debo y que me deben, con abonos. **Ahorros** con valor actual, meta opcional y aportes o retiros. CSV del mes para Excel |

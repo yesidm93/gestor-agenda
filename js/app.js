@@ -54,13 +54,14 @@ async function iniciar() {
   aplicarTema(localStorage.getItem('ga-tema') || 'sistema');
   await db.cargar();
   if (!db.lista('areas', { incluirEliminados: true }).length && !localStorage.getItem('ga-iniciada')) {
-    await db.guardarVarios('areas', [
-      { id: uid(), nombre: 'Personal', color: COLORES[1], orden: 0 },
-      { id: uid(), nombre: 'Docencia', color: COLORES[0], orden: 1 },
-      { id: uid(), nombre: 'Maestría', color: COLORES[3], orden: 2 },
-    ]);
+    await agregarCategorias(['Pagos', 'Personal', 'Universidad', 'Maestría', 'Casa']);
   }
   localStorage.setItem('ga-iniciada', '1');
+  if (!localStorage.getItem('ga-categorias-v1')) {
+    const faltan = sugeridasFaltantes().filter(n => ['Pagos', 'Personal', 'Universidad', 'Maestría', 'Casa'].includes(n));
+    await agregarCategorias(faltan);
+    localStorage.setItem('ga-categorias-v1', '1');
+  }
 
   pintarMarco();
   leerRuta();
@@ -157,7 +158,7 @@ function pintarLateral() {
     const activa = ui.vista === 'tareas' && ui.areaId === a.id;
     return `<button class="area-link" data-accion="filtrar-area" data-id="${a.id}" aria-pressed="${activa}">
       <i class="punto" style="--c:${a.color}"></i><span>${esc(a.nombre)}</span><b>${n || ''}</b></button>`;
-  }).join('') + `<button class="area-link tenue" data-accion="nueva-area">${I.mas}<span>Nueva área</span></button>`;
+  }).join('') + `<button class="area-link tenue" data-accion="nueva-area">${I.mas}<span>Nueva categoría</span></button>`;
 }
 
 function pintarEstadoSync(e) {
@@ -196,6 +197,18 @@ function render() {
   actualizarFab();
   ({ hoy: vistaHoy, tareas: vistaTareas, habitos: vistaHabitos, notas: vistaNotas, finanzas: vistaFinanzas, ajustes: vistaAjustes })[ui.vista]();
   pintarLateral();
+}
+
+const CATEGORIAS_SUGERIDAS = ['Pagos', 'Personal', 'Universidad', 'Maestría', 'Casa', 'Trabajo', 'Salud'];
+const sugeridasFaltantes = () => { const ya = new Set(db.lista('areas').map(a => norm(a.nombre))); return CATEGORIAS_SUGERIDAS.filter(n => !ya.has(norm(n))); };
+
+async function agregarCategorias(nombres) {
+  const base = db.lista('areas').length;
+  const usados = new Set(db.lista('areas').map(a => a.color));
+  const libres = [...COLORES.filter(c => !usados.has(c)), ...COLORES];
+  const nuevas = nombres.map((nombre, i) => ({ id: uid(), nombre, color: libres[i % libres.length], orden: base + i }));
+  if (nuevas.length) await db.guardarVarios('areas', nuevas);
+  return nuevas.length;
 }
 
 const areasOrdenadas = () => db.lista('areas').sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.nombre.localeCompare(b.nombre));
@@ -270,7 +283,7 @@ function capturaRapida(placeholder, contexto) {
     <span class="captura-mas" aria-hidden="true">${I.mas}</span>
     <input id="captura" name="texto" autocomplete="off" enterkeyhint="done" placeholder="${placeholder}" aria-label="Nueva tarea">
     <button class="btn btn-primario" type="submit">Agregar</button>
-    <p class="captura-ayuda">Escribe <b>mañana</b>, <b>viernes</b>, <b>28/11</b> o <b>3pm</b> para fecha y hora, <b>#área</b> para el área y <b>!</b> para prioridad alta.</p>
+    <p class="captura-ayuda">Escribe <b>mañana</b>, <b>viernes</b>, <b>28/11</b> o <b>3pm</b> para fecha y hora, <b>#pagos</b> para la categoría y <b>!</b> para prioridad alta.</p>
   </form>`;
 }
 
@@ -384,21 +397,22 @@ function vistaTareas() {
   $('#vista').innerHTML = `
     <header class="vista-cabecera">
       <h1>${a ? `<i class="punto grande" style="--c:${a.color}"></i>${esc(a.nombre)}` : 'Tareas'}</h1>
-      ${a ? `<button class="btn btn-texto" data-accion="quitar-area">Ver todas las áreas</button>` : ''}
+      ${a ? `<button class="btn btn-texto solo-escritorio" data-accion="quitar-area">Ver todas las categorías</button>` : ''}
       <div class="acciones"><button class="btn" data-accion="pegar-tareas">${I.importar}Pegar tareas</button></div>
     </header>
     ${capturaRapida(a ? `Agregar tarea en ${a.nombre}` : 'Agregar tarea', 'tareas')}
     <div class="filtros" role="tablist" aria-label="Filtrar tareas">
       ${Object.entries(FILTROS).map(([k, v]) => `<button role="tab" class="filtro" data-accion="filtro" data-valor="${k}" aria-selected="${f === k}">${v}</button>`).join('')}
     </div>
-    <label class="filtro-area solo-movil"><span class="sr-only">Área</span>
-      <select data-cambio="area-filtro"><option value="">Todas las áreas</option>
-        ${areasOrdenadas().map(x => `<option value="${x.id}" ${x.id === ui.areaId ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}
-      </select></label>
+    <div class="filtros chips-cat solo-movil" role="group" aria-label="Filtrar por categoría">
+      <button class="filtro" data-accion="quitar-area" aria-pressed="${!ui.areaId}">Todas</button>
+      ${areasOrdenadas().map(x => `<button class="filtro" data-accion="filtrar-area" data-id="${x.id}" aria-pressed="${x.id === ui.areaId}"><i class="punto" style="--c:${x.color}"></i>${esc(x.nombre)}</button>`).join('')}
+    </div>
     ${tareas.length ? [...grupos].map(([k, arr]) => `
       <section class="bloque ${k === 'Atrasadas' ? 'bloque-vencidas' : ''}"><h2>${k} <span class="cuenta">${arr.length}</span></h2>
         ${listaTareas(arr, { mostrarFecha: k === 'Atrasadas' || f === 'hechas' })}</section>`).join('')
       : `<p class="vacio grande">${vacios[f]}</p>`}`;
+  $('.chips-cat [aria-pressed="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
 
 // ---------------------------------------------------------------------
@@ -417,7 +431,7 @@ function abrirTarea(id, valores = {}) {
         <label class="campo"><span>Hora</span><input type="time" name="hora" value="${t.hora || ''}"></label>
       </div>
       <div class="fila-campos">
-        <label class="campo"><span>Área</span><select name="areaId"><option value="">Sin área</option>
+        <label class="campo"><span>Categoría</span><select name="areaId"><option value="">Sin categoría</option>
           ${areasOrdenadas().map(a => `<option value="${a.id}" ${a.id === t.areaId ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label>
         <label class="campo"><span>Repetir</span><select name="recurrencia">
           ${Object.entries(RECURRENCIAS).map(([k, v]) => `<option value="${k}" ${k === (t.recurrencia || '') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
@@ -489,6 +503,7 @@ async function guardarTareaDesdeForm(form) {
     pago: { monto: fin.leerMonto(fd.get('pagoMonto')), categoria: fd.get('pagoCategoria') || 'Servicios' },
   };
   if ((t.recurrencia || t.aviso.activo) && !t.fecha) t.fecha = hoy();
+  if (t.pago.monto && !t.areaId) t.areaId = db.lista('areas').find(a => norm(a.nombre) === 'pagos')?.id || null;
   if (!t.titulo) return;
   t.avisarEn = calcularAvisarEn(t);
   cerrarDialogo();
@@ -1402,8 +1417,8 @@ function abrirPegarTareas(texto = '') {
           <li>Casillas ☐ ☑, [ ] [x], viñetas (-, •) y números (1. 2.).</li>
           <li>Las marcadas como hechas (☑, [x], ✓) se muestran sin seleccionar.</li>
           <li>Fechas y horas: <i>mañana</i>, <i>viernes</i>, <i>15/12</i>, <i>3pm</i>, <i>10:30</i>.</li>
-          <li><i>#docencia</i> asigna el área; <i>!</i> pone prioridad alta.</li>
-          <li>Una línea como <i>Maestría:</i> asigna esa área a las tareas que siguen.</li>
+          <li><i>#pagos</i> asigna la categoría; <i>!</i> pone prioridad alta.</li>
+          <li>Una línea como <i>Maestría:</i> asigna esa categoría a las tareas que siguen.</li>
         </ul></details>
       <footer class="dlg-pie"><span class="separador"></span>
         <button type="button" class="btn" data-accion="cerrar-dialogo">Cancelar</button>
@@ -1427,9 +1442,9 @@ function previsualizarTareas(texto) {
       <header class="dlg-cabecera"><h2>${items.length} tarea${items.length > 1 ? 's' : ''} encontrada${items.length > 1 ? 's' : ''}</h2>
         <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
       <div class="fila-campos">
-        <label class="campo"><span>Área</span><select name="area">
+        <label class="campo"><span>Categoría</span><select name="area">
           ${conArea ? '<option value="auto">Según cada línea</option>' : ''}
-          <option value="">Sin área</option>
+          <option value="">Sin categoría</option>
           ${areasOrdenadas().map(a => `<option value="${a.id}">${esc(a.nombre)}</option>`).join('')}</select></label>
         <label class="campo"><span>Fecha</span><select name="fecha">
           <option value="auto">Según cada línea</option>
@@ -1536,12 +1551,13 @@ async function vistaAjustes() {
 
       ${panelRecordatorios(cfg, ses)}
 
-      <section class="panel"><h2>Áreas y cuadernos</h2>
-        <p class="ayuda">Las áreas agrupan tus tareas y funcionan como cuadernos para las notas.</p>
+      <section class="panel"><h2>Categorías</h2>
+        <p class="ayuda">Agrupan tus tareas (y sirven de cuadernos para las notas). Toca una para cambiar su nombre o color.</p>
         <ul class="lista-areas">${areasOrdenadas().map(a => `
           <li><i class="punto grande" style="--c:${a.color}"></i><span>${esc(a.nombre)}</span>
             <button class="btn btn-texto" data-accion="editar-area" data-id="${a.id}">Editar</button></li>`).join('')}</ul>
-        <button class="btn" data-accion="nueva-area">${I.mas}Nueva área</button>
+        ${sugeridasFaltantes().length ? `<p class="ayuda">Sugeridas: ${sugeridasFaltantes().map(n => `<button class="etiqueta" data-accion="agregar-sugerida" data-valor="${esc(n)}">+ ${esc(n)}</button>`).join(' ')}</p>` : ''}
+        <button class="btn" data-accion="nueva-area">${I.mas}Nueva categoría</button>
       </section>
 
       <section class="panel"><h2>Importar notas y tareas</h2>
@@ -1634,9 +1650,9 @@ function abrirArea(id) {
   const a = id ? db.obtener('areas', id) : { id: uid(), nombre: '', color: COLORES[areasOrdenadas().length % COLORES.length], orden: areasOrdenadas().length };
   abrirDialogo(`
     <form method="dialog" class="formulario" data-form="area" data-id="${a.id}">
-      <header class="dlg-cabecera"><h2>${id ? 'Editar área' : 'Nueva área'}</h2>
+      <header class="dlg-cabecera"><h2>${id ? 'Editar categoría' : 'Nueva categoría'}</h2>
         <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
-      <label class="campo"><span>Nombre</span><input name="nombre" required value="${esc(a.nombre)}" placeholder="Mecatrónica II" autocomplete="off"></label>
+      <label class="campo"><span>Nombre</span><input name="nombre" required value="${esc(a.nombre)}" placeholder="Pagos, Casa, Universidad…" autocomplete="off"></label>
       <fieldset class="campo colores"><legend>Color</legend>
         ${COLORES.map(c => `<label><input type="radio" name="color" value="${c}" ${c === a.color ? 'checked' : ''}><span style="--c:${c}" aria-label="Color ${c}"></span></label>`).join('')}
       </fieldset>
@@ -1644,7 +1660,7 @@ function abrirArea(id) {
         ${id ? `<button type="button" class="btn btn-peligro" data-accion="eliminar-area" data-id="${a.id}">${I.basura}Eliminar</button>` : ''}
         <span class="separador"></span>
         <button type="button" class="btn" data-accion="cerrar-dialogo">Cancelar</button>
-        <button type="submit" class="btn btn-primario">${id ? 'Guardar cambios' : 'Crear área'}</button></footer>
+        <button type="submit" class="btn btn-primario">${id ? 'Guardar cambios' : 'Crear categoría'}</button></footer>
     </form>`);
   setTimeout(() => $('#dlg input[name=nombre]')?.focus(), 50);
 }
@@ -1713,7 +1729,7 @@ async function alHacerClic(ev) {
     }
     case 'ver-hechas': ui.verHechasHoy = !ui.verHechasHoy; return render();
     case 'filtro': ui.filtro = valor; return render();
-    case 'filtrar-area': ui.areaId = id; ui.filtro = ui.filtro === 'hechas' ? 'todas' : ui.filtro; return ir('tareas');
+    case 'filtrar-area': ui.areaId = id; if (!['hechas', 'sinfecha'].includes(ui.filtro)) ui.filtro = 'todas'; return ir('tareas');
     case 'quitar-area': ui.areaId = null; return render();
     case 'alternar-habito': return alternarHabito(id, el.dataset.fecha);
     case 'nuevo-habito': return abrirHabito();
@@ -1774,15 +1790,16 @@ async function alHacerClic(ev) {
     case 'pegar': return abrirPegar();
     case 'marcar-todas': $$('#dlg input[name=sel]').forEach(c => { c.checked = valor === '1'; }); return actualizarBotonImport();
     case 'nueva-area': return abrirArea();
+    case 'agregar-sugerida': await agregarCategorias([valor]); return toast(`Categoría «${valor}» creada`);
     case 'editar-area': return abrirArea(id);
     case 'eliminar-area': {
       const a = db.obtener('areas', id);
       const n = db.lista('tareas').filter(t => t.areaId === id).length + db.lista('notas').filter(t => t.areaId === id).length;
-      if (n && !confirm(`«${a.nombre}» tiene ${n} tareas o notas. Quedarán sin área, no se borran. ¿Eliminar el área?`)) return;
+      if (n && !confirm(`«${a.nombre}» tiene ${n} tareas o notas. Quedarán sin categoría, no se borran. ¿Eliminar la categoría?`)) return;
       cerrarDialogo();
       if (ui.areaId === id) ui.areaId = null;
       await db.eliminar('areas', id);
-      return toast('Área eliminada', { texto: 'Deshacer', fn: () => db.restaurar('areas', id) });
+      return toast('Categoría eliminada', { texto: 'Deshacer', fn: () => db.restaurar('areas', id) });
     }
     case 'sincronizar': return sync.sincronizar();
     case 'salir': await sync.salir(); return render();
@@ -1914,7 +1931,7 @@ document.addEventListener('submit', async ev => {
     const previa = db.obtener('areas', f.dataset.id) || { id: f.dataset.id, orden: areasOrdenadas().length };
     cerrarDialogo();
     await db.guardar('areas', { ...previa, nombre: fd.get('nombre').trim(), color: fd.get('color') || COLORES[0] });
-    return toast(previa.nombre ? 'Cambios guardados' : 'Área creada');
+    return toast(previa.nombre ? 'Cambios guardados' : 'Categoría creada');
   }
   if (tipo === 'importar') return confirmarImport(f);
   if (tipo === 'pegar-tareas') return previsualizarTareas(new FormData(f).get('texto'));
