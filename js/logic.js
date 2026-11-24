@@ -164,3 +164,45 @@ export function calcularAvisarEn(t) {
 
 /** Tareas cuyo aviso ya llegó y siguen pendientes */
 export const avisoActivo = (t, ahora = Date.now()) => !t.completada && !t.eliminado && t.avisarEn && t.avisarEn <= ahora;
+
+// ---------------- Pegar tareas desde texto ----------------
+// Marcas que usan las apps de notas y listas al copiar como texto
+const MARCA_HECHA = /^(?:\[[xX✓✔]\]|\([xX✓✔]\)|[☑☒✓✔✅■◼●√✗✘])\s*/u;
+const MARCA_PENDIENTE = /^(?:\[\s?\]|\(\s?\)|[☐□◻○◯▢⬜]|[-*+•·▪▫►▶>–—]|\d{1,3}[.)-])\s*/u;
+
+/**
+ * Convierte texto copiado en tareas: una por línea.
+ * Entiende casillas (☐ ☑ [ ] [x]), viñetas, números, fechas y horas
+ * ("mañana 3pm", "viernes", "28/11"), #área, "!" para prioridad alta,
+ * líneas "Área:" como encabezado y líneas con sangría como notas de la anterior.
+ */
+export function parsearListaTareas(texto, areas) {
+  const out = [];
+  let areaActual = null;
+  for (const bruta of String(texto || '').replace(/\r\n?/g, '\n').split('\n')) {
+    let l = bruta.trim();
+    if (!l) continue;
+    let hecha = false, marcada = false;
+    l = l.replace(/^[-*+]\s+(?=[[(])/, '');
+    if (MARCA_HECHA.test(l)) { hecha = true; marcada = true; l = l.replace(MARCA_HECHA, ''); }
+    else if (MARCA_PENDIENTE.test(l)) { marcada = true; l = l.replace(MARCA_PENDIENTE, ''); }
+    l = l.trim();
+    if (!l) continue;
+    // Encabezado del tipo "Docencia:" → área para las siguientes líneas
+    if (!marcada && /:$/.test(l) && l.length <= 40) {
+      const nombre = norm(l.slice(0, -1));
+      const a = areas.find(a => norm(a.nombre) === nombre);
+      areaActual = a ? a.id : null;
+      continue;
+    }
+    // Línea con sangría y sin marca → detalle de la tarea anterior
+    if (!marcada && /^(\s{2,}|\t)/.test(bruta) && out.length) {
+      const prev = out[out.length - 1];
+      prev.notas = prev.notas ? `${prev.notas}\n${l}` : l;
+      continue;
+    }
+    const p = parsearRapido(l, areas);
+    out.push({ titulo: p.titulo || l, hecha, fecha: p.fecha, hora: p.hora, prioridad: p.prioridad, areaId: p.areaId || areaActual, notas: '' });
+  }
+  return out;
+}

@@ -76,7 +76,8 @@ Para revisar si el servidor está enviando, en el SQL Editor:
 
 - **Archivos .md:** exporta desde Notas de Xiaomi → en la app, **Notas → Importar** (o Ajustes → Importar notas) → selecciona todos los archivos (o el .zip). Revisa la lista y pulsa *Importar*.
 - **Desde Compartir:** abre una nota en Xiaomi → Compartir → *Gestor agenda*. Si compartes un archivo .md se abre la vista previa; si compartes texto, se crea la nota directamente.
-- **Pegar:** Ajustes → *Pegar texto*, separando cada nota con una línea `---`.
+- **Pegar:** Ajustes → *Pegar notas*, separando cada nota con una línea `---`.
+- **Tareas copiadas como texto:** en tu lista del celular, *Seleccionar todo → Copiar*; en la app, **Tareas → Pegar tareas** (o *Ajustes → Pegar tareas*). Cada línea es una tarea; entiende casillas ☐ ☑, viñetas, números, fechas (*mañana*, *viernes*, *15/12*), horas (*3pm*), `#área` y `!`. También puedes usar *Compartir → Gestor agenda* y elegir **Tareas**.
 
 ## 6. Publicar cambios
 

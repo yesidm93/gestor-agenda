@@ -12,7 +12,7 @@ import {
 import {
   PRIORIDADES, RECURRENCIAS, COLORES, proximaFecha, ordenarTareas, esVencida,
   tocaHoy, hecho, racha, cumplimiento, semanaActual, parsearRapido,
-  calcularAvisarEn, avisoActivo, REPETIR_AVISO, DIAS_ANTES,
+  calcularAvisarEn, avisoActivo, REPETIR_AVISO, DIAS_ANTES, parsearListaTareas,
 } from './logic.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -351,6 +351,7 @@ function vistaTareas() {
     <header class="vista-cabecera">
       <h1>${a ? `<i class="punto grande" style="--c:${a.color}"></i>${esc(a.nombre)}` : 'Tareas'}</h1>
       ${a ? `<button class="btn btn-texto" data-accion="quitar-area">Ver todas las áreas</button>` : ''}
+      <div class="acciones"><button class="btn" data-accion="pegar-tareas">${I.importar}Pegar tareas</button></div>
     </header>
     ${capturaRapida(a ? `Agregar tarea en ${a.nombre}` : 'Agregar tarea', 'tareas')}
     <div class="filtros" role="tablist" aria-label="Filtrar tareas">
@@ -1171,11 +1172,130 @@ async function procesarCompartido() {
   const it = items[0] || { title: params.get('title'), text: params.get('text'), url: params.get('url') };
   const texto = [it.text, it.url].filter(Boolean).join('\n\n');
   if (!texto && !it.title) return;
+  textoCompartido = { titulo: it.title || '', texto };
+  const lineas = texto.split('\n').filter(l => l.trim()).length;
+  abrirDialogo(`
+    <div class="formulario">
+      <header class="dlg-cabecera"><h2>Recibiste un texto</h2>
+        <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
+      <pre class="texto-recibido">${esc(texto.slice(0, 600))}${texto.length > 600 ? '…' : ''}</pre>
+      <p class="ayuda">¿Qué quieres crear con él?</p>
+      <div class="fila-botones">
+        <button class="btn btn-primario" data-accion="compartido-tareas">${lineas > 1 ? `Tareas (una por línea)` : 'Una tarea'}</button>
+        <button class="btn" data-accion="compartido-nota">Una nota</button>
+      </div>
+    </div>`);
+}
+
+let textoCompartido = null;
+
+async function compartidoComoNota() {
+  const it = textoCompartido;
+  if (!it) return;
+  const texto = it.texto;
   const c = imp.parsearMarkdown(it.title ? `# ${it.title}\n\n${texto}` : texto, '', Date.now());
   const n = imp.candidataANota(c, null);
   await db.guardar('notas', n);
+  cerrarDialogo();
   ir('notas', n.id);
   toast('Nota creada desde Compartir. Elige su cuaderno arriba.');
+}
+
+// ---------------------------------------------------------------------
+//  Pegar tareas como texto
+// ---------------------------------------------------------------------
+function abrirPegarTareas(texto = '') {
+  abrirDialogo(`
+    <form method="dialog" class="formulario" data-form="pegar-tareas">
+      <header class="dlg-cabecera"><h2>Pegar tareas</h2>
+        <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
+      <p class="ayuda">En tu celular abre la lista, mantén presionado el texto, elige <b>Seleccionar todo → Copiar</b> y pégalo aquí. Cada línea será una tarea.</p>
+      <label class="campo"><span class="sr-only">Texto de las tareas</span>
+        <textarea name="texto" rows="9" required placeholder="☐ Pagar celular el 15/12&#10;☐ Calificar parcial mañana 3pm #docencia&#10;☑ Comprar tinta">${esc(texto)}</textarea></label>
+      ${navigator.clipboard?.readText ? `<button type="button" class="btn" data-accion="leer-portapapeles">${I.copiar}Pegar lo que copié</button>` : ''}
+      <details class="guia"><summary>¿Qué entiende?</summary>
+        <ul class="ayuda">
+          <li>Casillas ☐ ☑, [ ] [x], viñetas (-, •) y números (1. 2.).</li>
+          <li>Las marcadas como hechas (☑, [x], ✓) se muestran sin seleccionar.</li>
+          <li>Fechas y horas: <i>mañana</i>, <i>viernes</i>, <i>15/12</i>, <i>3pm</i>, <i>10:30</i>.</li>
+          <li><i>#docencia</i> asigna el área; <i>!</i> pone prioridad alta.</li>
+          <li>Una línea como <i>Maestría:</i> asigna esa área a las tareas que siguen.</li>
+        </ul></details>
+      <footer class="dlg-pie"><span class="separador"></span>
+        <button type="button" class="btn" data-accion="cerrar-dialogo">Cancelar</button>
+        <button type="submit" class="btn btn-primario">Revisar tareas</button></footer>
+    </form>`);
+  if (!texto) setTimeout(() => $('#dlg textarea')?.focus(), 50);
+}
+
+let tareasPegadas = [];
+
+function previsualizarTareas(texto) {
+  const items = parsearListaTareas(texto, areasOrdenadas());
+  if (!items.length) return toast('No encontré tareas en ese texto.');
+  const existentes = new Set(db.lista('tareas').filter(t => !t.completada).map(t => norm(t.titulo)));
+  items.forEach((it, i) => { it.i = i; it.duplicada = existentes.has(norm(it.titulo)); });
+  tareasPegadas = items;
+  const marcadas = items.filter(it => !it.hecha && !it.duplicada).length;
+  const conArea = items.some(it => it.areaId);
+  abrirDialogo(`
+    <form method="dialog" class="formulario ancho" data-form="importar-tareas">
+      <header class="dlg-cabecera"><h2>${items.length} tarea${items.length > 1 ? 's' : ''} encontrada${items.length > 1 ? 's' : ''}</h2>
+        <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
+      <div class="fila-campos">
+        <label class="campo"><span>Área</span><select name="area">
+          ${conArea ? '<option value="auto">Según cada línea</option>' : ''}
+          <option value="">Sin área</option>
+          ${areasOrdenadas().map(a => `<option value="${a.id}">${esc(a.nombre)}</option>`).join('')}</select></label>
+        <label class="campo"><span>Fecha</span><select name="fecha">
+          <option value="auto">Según cada línea</option>
+          <option value="hoy">Hoy para todas</option>
+          <option value="manana">Mañana para todas</option>
+          <option value="">Sin fecha</option></select></label>
+      </div>
+      <div class="previa-acciones"><button type="button" class="btn btn-texto" data-accion="marcar-todas" data-valor="1">Marcar todas</button>
+        <button type="button" class="btn btn-texto" data-accion="marcar-todas" data-valor="0">Desmarcar todas</button></div>
+      <ul class="lista-previa">${items.map(it => {
+        const a = area(it.areaId);
+        return `<li><label class="item-previa">
+          <input type="checkbox" name="sel" value="${it.i}" ${it.hecha || it.duplicada ? '' : 'checked'}>
+          <span class="item-previa-texto"><b>${esc(it.titulo)}</b>
+            <span class="item-previa-meta">
+              ${it.hecha ? '<span class="insignia">Ya hecha</span>' : ''}${it.duplicada ? '<span class="insignia">Ya existe</span>' : ''}
+              ${it.fecha ? `<span>${fechaAmigable(it.fecha)}</span>` : ''}${it.hora ? `<span>${horaAmigable(it.hora)}</span>` : ''}
+              ${a ? `<span><i class="punto" style="--c:${a.color}"></i> ${esc(a.nombre)}</span>` : ''}${it.prioridad === 'alta' ? '<span>Prioridad alta</span>' : ''}
+              ${it.notas ? `<span>${esc(it.notas.slice(0, 60))}</span>` : ''}
+            </span></span></label></li>`;
+      }).join('')}</ul>
+      <footer class="dlg-pie">
+        <button type="button" class="btn btn-texto" data-accion="volver-pegar">Editar texto</button>
+        <span class="separador"></span>
+        <button type="submit" class="btn btn-primario" id="btn-importar">Crear ${marcadas} tarea${marcadas === 1 ? '' : 's'}</button></footer>
+    </form>`);
+  previsualizarTareas.texto = texto;
+}
+
+async function crearTareasPegadas(form) {
+  const fd = new FormData(form);
+  const sel = new Set(fd.getAll('sel').map(Number));
+  const elegidas = tareasPegadas.filter(it => sel.has(it.i));
+  if (!elegidas.length) return toast('Marca al menos una tarea.');
+  const modoArea = fd.get('area'), modoFecha = fd.get('fecha');
+  const fechaFija = { hoy: hoy(), manana: addDays(hoy(), 1), '': null };
+  const nuevas = elegidas.map(it => {
+    let fecha = modoFecha === 'auto' ? it.fecha : fechaFija[modoFecha];
+    if (modoFecha === 'auto' && !fecha && it.hora) fecha = hoy();
+    return {
+      id: uid(), titulo: it.titulo, notas: it.notas || '', prioridad: it.prioridad || 'media', fecha, hora: it.hora || null,
+      recurrencia: '', areaId: modoArea === 'auto' ? it.areaId || null : modoArea || null, completada: false,
+    };
+  });
+  cerrarDialogo();
+  await db.guardarVarios('tareas', nuevas);
+  ui.filtro = nuevas.some(t => !t.fecha) && nuevas.every(t => !t.fecha) ? 'sinfecha' : 'todas';
+  ui.areaId = null;
+  ir('tareas');
+  toast(`${nuevas.length} tarea${nuevas.length > 1 ? 's creadas' : ' creada'}`);
 }
 
 // =====================================================================
@@ -1239,11 +1359,12 @@ async function vistaAjustes() {
         <button class="btn" data-accion="nueva-area">${I.mas}Nueva área</button>
       </section>
 
-      <section class="panel"><h2>Importar notas</h2>
+      <section class="panel"><h2>Importar notas y tareas</h2>
         <p class="ayuda">Archivos Markdown (.md), de texto (.txt) o un .zip con varios. Antes de guardar verás la lista para elegir cuáles traer.</p>
         <div class="fila-botones">
           <button class="btn btn-primario" data-accion="importar">${I.importar}Elegir archivos</button>
-          <button class="btn" data-accion="pegar">Pegar texto</button>
+          <button class="btn" data-accion="pegar">Pegar notas</button>
+          <button class="btn" data-accion="pegar-tareas">Pegar tareas</button>
         </div>
       </section>
 
@@ -1443,6 +1564,23 @@ async function alHacerClic(ev) {
     }
     case 'pendientes-a-tareas': await guardarNotaYa(); return pendientesATareas();
     case 'importar': return elegirArchivos();
+    case 'pegar-tareas': return abrirPegarTareas();
+    case 'volver-pegar': return abrirPegarTareas(previsualizarTareas.texto || '');
+    case 'leer-portapapeles': {
+      try {
+        const t = await navigator.clipboard.readText();
+        if (!t.trim()) return toast('El portapapeles está vacío. Copia primero tus tareas.');
+        $('#dlg textarea[name=texto]').value = t;
+      } catch { toast('No pude leer lo copiado. Mantén presionado el cuadro y elige Pegar.'); }
+      return;
+    }
+    case 'compartido-nota': return compartidoComoNota();
+    case 'compartido-tareas': {
+      const it = textoCompartido;
+      if (!it) return;
+      ir('tareas');
+      return previsualizarTareas([it.titulo, it.texto].filter(Boolean).join('\n'));
+    }
     case 'pegar': return abrirPegar();
     case 'marcar-todas': $$('#dlg input[name=sel]').forEach(c => { c.checked = valor === '1'; }); return actualizarBotonImport();
     case 'nueva-area': return abrirArea();
@@ -1541,7 +1679,8 @@ async function alHacerClic(ev) {
 function actualizarBotonImport() {
   const n = $$('#dlg input[name=sel]:checked').length;
   const b = $('#btn-importar');
-  if (b) { b.textContent = `Importar ${n} nota${n === 1 ? '' : 's'}`; b.disabled = !n; }
+  const tareas = !!$('#dlg [data-form=importar-tareas]');
+  if (b) { b.textContent = tareas ? `Crear ${n} tarea${n === 1 ? '' : 's'}` : `Importar ${n} nota${n === 1 ? '' : 's'}`; b.disabled = !n; }
 }
 
 document.addEventListener('submit', async ev => {
@@ -1568,6 +1707,8 @@ document.addEventListener('submit', async ev => {
     return toast(previa.nombre ? 'Cambios guardados' : 'Área creada');
   }
   if (tipo === 'importar') return confirmarImport(f);
+  if (tipo === 'pegar-tareas') return previsualizarTareas(new FormData(f).get('texto'));
+  if (tipo === 'importar-tareas') return crearTareasPegadas(f);
   if (tipo === 'pago-tarea') {
     const fd = new FormData(f);
     const t = db.obtener('tareas', f.dataset.id);

@@ -740,3 +740,7 @@ dialog:has(.formulario.ancho) { width: min(720px, calc(100vw - 32px)); }
   .captura .btn::after { content: '+'; font-size: 1.2rem; }
   .nav-inferior a span { font-size: 0.62rem; }
 }
+
+/* Texto recibido desde "Compartir" */
+.texto-recibido { margin: 0; max-height: 30dvh; overflow: auto; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 0.9rem; color: var(--grafito); background: var(--suave); border-radius: var(--r-m); padding: 10px 12px; }
+.guia ul.ayuda { padding-left: 1.1em; margin: 6px 0 0; display: grid; gap: 4px; }
