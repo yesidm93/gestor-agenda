@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es" data-tema="claro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gestor agenda</title>
+  <meta name="description" content="Tareas, hábitos y notas en un solo lugar, en el celular y en el computador.">
+  <meta name="theme-color" content="#F6F7F9">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icono.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="preload" href="./fonts/atkinson-hyperlegible-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./fonts/bricolage-grotesque-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body data-vista="hoy">
+  <a class="saltar" href="#vista">Saltar al contenido</a>
+  <div class="app">
+    <aside class="lateral" aria-label="Navegación">
+      <div class="logo"><img src="./icons/icono.svg" alt="" width="30" height="30"><span>Gestor agenda</span></div>
+      <nav id="nav-lateral" class="nav-lateral"></nav>
+      <h2 class="lateral-titulo">Áreas</h2>
+      <div id="lateral-areas" class="lateral-areas"></div>
+      <a href="#/ajustes" class="estado-sync" data-fase="apagado"></a>
+    </aside>
+
+    <header class="cabecera-movil">
+      <h1 id="titulo-movil">Hoy</h1>
+      <a href="#/ajustes" class="estado-sync compacto" data-fase="apagado" aria-label="Estado del respaldo"></a>
+      <a href="#/ajustes" class="btn-icono enlace-ajustes" aria-label="Ajustes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></a>
+    </header>
+
+    <main id="vista" class="vista" tabindex="-1"></main>
+
+    <nav id="nav-inferior" class="nav-inferior" aria-label="Secciones"></nav>
+    <button id="fab" class="fab" type="button" aria-label="Nueva tarea">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+
+  <dialog id="dlg" aria-modal="true"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="banner-actualizar" class="banner" hidden>
+    <span>Hay una versión nueva de la app.</span>
+    <button class="btn btn-primario" data-accion="actualizar-app">Actualizar</button>
+  </div>
+
+  <noscript>Esta app necesita JavaScript activado.</noscript>
+  <script src="./vendor/marked.umd.js"></script>
+  <script src="./vendor/purify.min.js"></script>
+  <script src="./vendor/jszip.min.js"></script>
+  <script src="./vendor/supabase.js"></script>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

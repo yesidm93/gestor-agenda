@@ -1,0 +1,39 @@
+{
+  "name": "Gestor agenda",
+  "short_name": "Agenda",
+  "description": "Tareas, hábitos y notas en el celular y en el computador.",
+  "lang": "es",
+  "id": "./",
+  "start_url": "./#/hoy",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#F6F7F9",
+  "theme_color": "#1B2A4A",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Hoy", "url": "./#/hoy", "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Nueva nota", "url": "./#/notas", "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }] }
+  ],
+  "share_target": {
+    "action": "./compartir",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "archivos",
+          "accept": ["text/markdown", "text/plain", "text/x-markdown", "application/zip", "application/x-zip-compressed", "application/octet-stream", ".md", ".markdown", ".txt", ".zip"]
+        }
+      ]
+    }
+  }
+}
