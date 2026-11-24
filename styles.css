@@ -752,3 +752,9 @@ dialog:has(.formulario.ancho) { width: min(720px, calc(100vw - 32px)); }
 .opcion-import > b svg { width: 18px; height: 18px; }
 .opcion-import small { color: var(--grafito); font-size: 0.86rem; line-height: 1.4; }
 .opcion-import.info { cursor: default; background: var(--suave); border-color: transparent; }
+
+/* Saldo inicial dentro de la tarjeta "Disponible" */
+.resumen-mes .disponible .btn-base { display: block; margin-top: 4px; padding: 0; border: 0; background: none; text-align: left; font-size: 0.8rem; color: color-mix(in srgb, var(--papel) 72%, transparent); cursor: pointer; }
+.resumen-mes .disponible button.btn-base:hover { text-decoration: underline; }
+.resumen-mes .disponible.sin-base dd { font-size: var(--t-l); }
+.resumen-mes .disponible.sin-base .btn { margin-top: 10px; background: var(--resaltador); color: var(--sobre-resaltador); border-color: transparent; }

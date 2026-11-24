@@ -118,19 +118,28 @@ export async function sincronizar() {
     await db.idb.metaSet('cursor:' + s.user.id, cursor);
     await db.deduplicarAreas();
 
-    // 2) Subir pendientes
+    // 2) Subir pendientes, por tipo: si Supabase aún no acepta un tipo nuevo, los demás siguen
     const pend = db.pendientes();
     let subidos = 0;
-    for (let i = 0; i < pend.length; i += LOTE) {
-      const lote = pend.slice(i, i + LOTE);
-      const filas = lote.map(({ tipo, obj }) => {
-        const { id, actualizadoEn, eliminado, _dirty, ...data } = obj;
-        return { id, user_id: s.user.id, tipo, data: { ...data }, actualizado_en: actualizadoEn, eliminado: !!eliminado };
-      });
-      const { error } = await c.from('registros').upsert(filas, { onConflict: 'id' });
-      if (error) throw traducir(error);
-      for (const { tipo, obj } of lote) await db.marcarSubido(tipo, obj.id, obj.actualizadoEn);
-      subidos += lote.length;
+    const rechazados = [];
+    for (const tipo of db.TIPOS) {
+      const delTipo = pend.filter(p => p.tipo === tipo);
+      for (let i = 0; i < delTipo.length; i += LOTE) {
+        const lote = delTipo.slice(i, i + LOTE);
+        const filas = lote.map(({ obj }) => {
+          const { id, actualizadoEn, eliminado, _dirty, ...data } = obj;
+          return { id, user_id: s.user.id, tipo, data: { ...data }, actualizado_en: actualizadoEn, eliminado: !!eliminado };
+        });
+        const { error } = await c.from('registros').upsert(filas, { onConflict: 'id' });
+        if (error && /registros_tipo_check/.test(error.message || '')) { rechazados.push(tipo); break; }
+        if (error) throw traducir(error);
+        for (const { obj } of lote) await db.marcarSubido(tipo, obj.id, obj.actualizadoEn);
+        subidos += lote.length;
+      }
+    }
+    if (rechazados.length) {
+      estado.ultima = Date.now();
+      return setEstado('error', `Supabase aún no acepta «${rechazados.join(', ')}». Ejecuta el SQL de actualización (ver guía). Lo demás sí se respaldó.`);
     }
 
     estado.ultima = Date.now();

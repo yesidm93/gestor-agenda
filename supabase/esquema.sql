@@ -19,7 +19,7 @@ create table if not exists public.registros (
 -- Tipos de registro permitidos (se puede volver a ejecutar para agregar tipos nuevos)
 alter table public.registros drop constraint if exists registros_tipo_check;
 alter table public.registros add constraint registros_tipo_check
-  check (tipo in ('areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas'));
+  check (tipo in ('areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas', 'ahorros'));
 
 create index if not exists registros_user_server_ts on public.registros (user_id, server_ts);
 create index if not exists registros_user_tipo on public.registros (user_id, tipo);

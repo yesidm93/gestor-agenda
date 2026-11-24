@@ -1,6 +1,6 @@
 // Service worker: funciona sin conexión y recibe lo que se comparte desde el celular.
 // Cambia VERSION cada vez que publiques cambios para que los dispositivos se actualicen.
-const VERSION = 'ga-v1.3.1';
+const VERSION = 'ga-v1.4.0';
 
 const ARCHIVOS = [
   './',
@@ -48,10 +48,10 @@ self.addEventListener('message', e => {
 // --- IndexedDB mínima para guardar lo compartido (misma estructura que js/db.js) ---
 function abrirDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('gestor-agenda', 2);
+    const r = indexedDB.open('gestor-agenda', 3);
     r.onupgradeneeded = () => {
       const db = r.result;
-      for (const s of ['areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas']) if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id' });
+      for (const s of ['areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas', 'ahorros']) if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id' });
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
       if (!db.objectStoreNames.contains('share')) db.createObjectStore('share', { autoIncrement: true });
     };

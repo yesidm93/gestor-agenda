@@ -128,7 +128,7 @@ function leerRuta() {
 function actualizarFab() {
   const fab = $('#fab');
   fab.hidden = ui.vista === 'ajustes' || (ui.vista === 'notas' && !!ui.notaId && !escritorio());
-  fab.setAttribute('aria-label', { hoy: 'Nueva tarea', tareas: 'Nueva tarea', habitos: 'Nuevo hábito', notas: 'Nueva nota', finanzas: ui.fpestana === 'deudas' ? 'Nueva deuda' : 'Registrar gasto o ingreso' }[ui.vista] || 'Agregar');
+  fab.setAttribute('aria-label', { hoy: 'Nueva tarea', tareas: 'Nueva tarea', habitos: 'Nuevo hábito', notas: 'Nueva nota', finanzas: ui.fpestana === 'deudas' ? 'Nueva deuda' : ui.fpestana === 'ahorros' ? 'Nuevo ahorro' : 'Registrar gasto o ingreso' }[ui.vista] || 'Agregar');
 }
 
 function ir(vista, id) {
@@ -594,24 +594,29 @@ const colorCategoria = c => COLORES[Math.abs([...String(c)].reduce((h, ch) => (h
 function vistaFinanzas() {
   const movs = db.lista('movimientos');
   const deudas = db.lista('deudas');
+  const ahorros = db.lista('ahorros');
   const pendientes = deudas.filter(d => !fin.saldada(d));
+  const botones = {
+    mes: `<button class="btn" data-accion="nuevo-mov" data-valor="ingreso">${I.mas}Ingreso</button><button class="btn btn-primario" data-accion="nuevo-mov" data-valor="gasto">${I.mas}Gasto</button>`,
+    deudas: `<button class="btn btn-primario" data-accion="nueva-deuda">${I.mas}Nueva deuda</button>`,
+    ahorros: `<button class="btn btn-primario" data-accion="nuevo-ahorro">${I.mas}Nuevo ahorro</button>`,
+  };
   $('#vista').innerHTML = `
     <header class="vista-cabecera"><h1>Finanzas</h1>
-      <div class="acciones solo-escritorio">
-        ${ui.fpestana === 'mes'
-          ? `<button class="btn" data-accion="nuevo-mov" data-valor="ingreso">${I.mas}Ingreso</button><button class="btn btn-primario" data-accion="nuevo-mov" data-valor="gasto">${I.mas}Gasto</button>`
-          : `<button class="btn btn-primario" data-accion="nueva-deuda">${I.mas}Nueva deuda</button>`}
-      </div></header>
+      <div class="acciones solo-escritorio">${botones[ui.fpestana] || ''}</div></header>
     <div class="filtros" role="tablist" aria-label="Sección de finanzas">
       <button role="tab" class="filtro" data-accion="fpestana" data-valor="mes" aria-selected="${ui.fpestana === 'mes'}">Gastos e ingresos</button>
       <button role="tab" class="filtro" data-accion="fpestana" data-valor="deudas" aria-selected="${ui.fpestana === 'deudas'}">Deudas ${pendientes.length ? `<span class="cuenta">${pendientes.length}</span>` : ''}</button>
+      <button role="tab" class="filtro" data-accion="fpestana" data-valor="ahorros" aria-selected="${ui.fpestana === 'ahorros'}">Ahorros ${ahorros.length ? `<span class="cuenta">${ahorros.length}</span>` : ''}</button>
     </div>
-    ${ui.fpestana === 'mes' ? htmlMes(movs) : htmlDeudas(deudas)}`;
+    ${ui.fpestana === 'deudas' ? htmlDeudas(deudas) : ui.fpestana === 'ahorros' ? htmlAhorros(ahorros) : htmlMes(movs)}`;
 }
 
 function htmlMes(movs) {
   const mes = ui.fmes;
   const r = fin.resumenMes(movs, mes);
+  const base = fin.saldoBase(movs);
+  const disp = fin.disponible(movs, mes);
   const ant = fin.resumenMes(movs, fin.moverMes(mes, -1));
   let comparacion = '';
   if (ant.gastos > 0 && r.gastos > 0) {
@@ -635,11 +640,18 @@ function htmlMes(movs) {
       ${mes !== fin.mesActual() ? `<button class="btn btn-texto" data-accion="fmes" data-valor="0">Ir al mes actual</button>` : ''}
     </div>
     <dl class="resumen-mes">
-      <div><dt>Ingresos</dt><dd class="monto-ingreso">${fin.pesos(r.ingresos)}</dd></div>
-      <div><dt>Gastos</dt><dd class="monto-gasto">${fin.pesos(r.gastos)}</dd></div>
-      <div class="disponible"><dt>Disponible</dt><dd class="${r.balance < 0 ? 'negativo' : ''}">${fin.pesos(r.balance)}</dd></div>
+      <div><dt>Ingresos del mes</dt><dd class="monto-ingreso">${fin.pesos(r.ingresos)}</dd></div>
+      <div><dt>Gastos del mes</dt><dd class="monto-gasto">${fin.pesos(r.gastos)}</dd></div>
+      ${disp !== null
+        ? `<div class="disponible"><dt>Disponible ${mes === fin.mesActual() ? 'hoy' : 'al cierre del mes'}</dt><dd class="${disp < 0 ? 'negativo' : ''}">${fin.pesos(disp)}</dd>
+            <button class="btn-base" data-accion="saldo-base">Saldo inicial ${fin.pesos(base.monto)} ${base.fecha === hoy() ? 'hoy' : 'el ' + fechaAmigable(base.fecha).toLowerCase()} · Cambiar</button></div>`
+        : base
+          ? `<div class="disponible"><dt>Balance del mes</dt><dd class="${r.balance < 0 ? 'negativo' : ''}">${fin.pesos(r.balance)}</dd>
+              <span class="btn-base">Este mes es anterior a tu saldo inicial</span></div>`
+          : `<div class="disponible sin-base"><dt>Disponible</dt><dd>¿Cuánto tienes hoy?</dd>
+              <button class="btn" data-accion="saldo-base">Ingresar saldo actual</button></div>`}
     </dl>
-    ${comparacion ? `<p class="ayuda">${comparacion}</p>` : ''}
+    ${disp !== null ? `<p class="ayuda">Balance del mes: <b class="${r.balance < 0 ? 'monto-gasto' : 'monto-ingreso'}">${r.balance < 0 ? '−' : '+'}${fin.pesos(Math.abs(r.balance))}</b>${comparacion ? '. ' + comparacion : ''}</p>` : comparacion ? `<p class="ayuda">${comparacion}</p>` : ''}
     <div class="fin-columnas">
       <section class="bloque"><h2>Movimientos <span class="cuenta">${r.delMes.length}</span></h2>
         ${porDia.size ? [...porDia].map(([f, arr]) => `
@@ -700,6 +712,98 @@ function htmlDeudas(deudas) {
     ${grupo('meDeben', 'Lo que me deben', 'Nadie te debe dinero.')}
   </div>
   <button class="btn btn-primario solo-movil" data-accion="nueva-deuda">${I.mas}Nueva deuda</button>`;
+}
+
+function htmlAhorros(ahorros) {
+  const lista = ahorros.slice().sort((a, b) => (b.monto || 0) - (a.monto || 0));
+  const total = fin.totalAhorros(lista);
+  return `
+    <section class="bloque">
+      <h2>Total ahorrado</h2>
+      <p class="total-deuda monto-ingreso">${fin.pesos(total)}</p>
+      ${lista.length ? `<ul class="lista-deudas">${lista.map(a => {
+        const av = fin.avanceMeta(a);
+        return `<li class="deuda">
+          <button class="deuda-info" data-accion="editar-ahorro" data-id="${a.id}">
+            <b>${esc(a.nombre)}</b>
+            ${a.nota ? `<small>${esc(a.nota)}</small>` : ''}
+            <span class="deuda-saldo">${fin.pesos(a.monto)}${a.meta ? ` <small>de ${fin.pesos(a.meta)} · ${av}%</small>` : ''}</span>
+            ${a.meta ? `<span class="progreso"><span style="width:${av}%"></span></span>` : ''}
+          </button>
+          <button class="btn" data-accion="aporte-ahorro" data-id="${a.id}">Agregar</button>
+        </li>`;
+      }).join('')}</ul>`
+      : `<div class="vacio grande"><p>Registra dónde tienes tus ahorros y cuánto hay en cada uno: cuenta de ahorros, CDT, alcancía, fondo de emergencia…</p>
+          <button class="btn btn-primario" data-accion="nuevo-ahorro">Agregar un ahorro</button></div>`}
+    </section>
+    ${lista.length ? `<button class="btn btn-primario solo-movil" data-accion="nuevo-ahorro">${I.mas}Nuevo ahorro</button>` : ''}`;
+}
+
+function abrirSaldoBase() {
+  const base = fin.saldoBase(db.lista('movimientos'));
+  abrirDialogo(`
+    <form method="dialog" class="formulario" data-form="saldo-base">
+      <header class="dlg-cabecera"><h2>Saldo actual</h2>
+        <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
+      <p class="ayuda">Escribe cuánto dinero tienes disponible (efectivo y cuentas, sin contar ahorros). Desde esa fecha la app suma tus ingresos y resta tus gastos.</p>
+      <label class="campo"><span>Valor disponible</span><input name="monto" class="monto-grande" inputmode="numeric" data-monto required value="${base ? fin.numero(base.monto) : ''}" placeholder="$ 0" autocomplete="off"></label>
+      <label class="campo"><span>A la fecha</span><input type="date" name="fecha" required value="${hoy()}" max="${hoy()}"></label>
+      <p class="ayuda">Los movimientos anteriores a esa fecha no cambian el disponible.</p>
+      <footer class="dlg-pie"><span class="separador"></span>
+        <button type="button" class="btn" data-accion="cerrar-dialogo">Cancelar</button>
+        <button type="submit" class="btn btn-primario">Guardar saldo</button></footer>
+    </form>`);
+  setTimeout(() => { const i = $('#dlg input[name=monto]'); i?.focus(); i?.select(); }, 50);
+}
+
+function abrirAhorro(id) {
+  const a = id ? db.obtener('ahorros', id) : { id: uid(), nombre: '', monto: 0, meta: 0, nota: '', historial: [] };
+  abrirDialogo(`
+    <form method="dialog" class="formulario" data-form="ahorro" data-id="${a.id}">
+      <header class="dlg-cabecera"><h2>${id ? 'Ahorro' : 'Nuevo ahorro'}</h2>
+        <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
+      <label class="campo"><span>Nombre</span><input name="nombre" required value="${esc(a.nombre)}" placeholder="Cuenta de ahorros, CDT, fondo de emergencia…" autocomplete="off"></label>
+      <label class="campo"><span>Valor actual</span><input name="monto" class="monto-grande" inputmode="numeric" data-monto value="${a.monto ? fin.numero(a.monto) : ''}" placeholder="$ 0" autocomplete="off"></label>
+      <div class="fila-campos">
+        <label class="campo"><span>Meta (opcional)</span><input name="meta" inputmode="numeric" data-monto value="${a.meta ? fin.numero(a.meta) : ''}" placeholder="$ 0" autocomplete="off"></label>
+        <label class="campo"><span>Nota</span><input name="nota" value="${esc(a.nota || '')}" placeholder="Banco, plazo…" autocomplete="off"></label>
+      </div>
+      ${id && a.historial?.length ? `<section class="subseccion"><h3>Movimientos</h3>
+        <ul class="lista-abonos">${a.historial.slice().sort((x, y) => y.fecha.localeCompare(x.fecha)).slice(0, 12).map(h => `<li>
+          <span>${fechaAmigable(h.fecha)}${h.nota ? ' · ' + esc(h.nota) : ''}</span><b class="${h.monto < 0 ? 'monto-gasto' : 'monto-ingreso'}">${h.monto < 0 ? '−' : '+'}${fin.pesos(Math.abs(h.monto))}</b></li>`).join('')}</ul></section>` : ''}
+      <footer class="dlg-pie">
+        ${id ? `<button type="button" class="btn btn-peligro" data-accion="eliminar-ahorro" data-id="${a.id}">${I.basura}Eliminar</button>` : ''}
+        <span class="separador"></span>
+        ${id ? `<button type="button" class="btn" data-accion="aporte-ahorro" data-id="${a.id}">Agregar o retirar</button>` : ''}
+        <button type="submit" class="btn btn-primario">${id ? 'Guardar cambios' : 'Agregar ahorro'}</button>
+      </footer>
+    </form>`);
+  if (!id) setTimeout(() => $('#dlg input[name=nombre]')?.focus(), 50);
+}
+
+function abrirAporte(id) {
+  const a = db.obtener('ahorros', id);
+  if (!a) return;
+  abrirDialogo(`
+    <form method="dialog" class="formulario" data-form="aporte" data-id="${a.id}">
+      <header class="dlg-cabecera"><h2>${esc(a.nombre)}</h2>
+        <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
+      <p class="ayuda">Valor actual: <b>${fin.pesos(a.monto)}</b></p>
+      <div class="segmentado" role="radiogroup" aria-label="Tipo de movimiento">
+        <label><input type="radio" name="tipo" value="agregar" checked data-cambio="tipo-aporte"><span>Agregar dinero</span></label>
+        <label><input type="radio" name="tipo" value="retirar" data-cambio="tipo-aporte"><span>Retirar</span></label>
+      </div>
+      <label class="campo"><span>Valor</span><input name="monto" class="monto-grande" inputmode="numeric" data-monto required placeholder="$ 0" autocomplete="off"></label>
+      <div class="fila-campos">
+        <label class="campo"><span>Fecha</span><input type="date" name="fecha" value="${hoy()}"></label>
+        <label class="campo"><span>Nota</span><input name="nota" placeholder="Quincena, imprevisto…" autocomplete="off"></label>
+      </div>
+      <label class="casilla"><input type="checkbox" name="registrar" checked><span id="txt-registrar">Descontarlo del disponible (se registra como gasto «Ahorro»)</span></label>
+      <footer class="dlg-pie"><span class="separador"></span>
+        <button type="button" class="btn" data-accion="cerrar-dialogo">Cancelar</button>
+        <button type="submit" class="btn btn-primario">Guardar</button></footer>
+    </form>`);
+  setTimeout(() => $('#dlg input[name=monto]')?.focus(), 50);
 }
 
 function opcionesCategorias(clase, actual) {
@@ -1674,6 +1778,17 @@ async function alHacerClic(ev) {
       return toast('Movimiento eliminado', { texto: 'Deshacer', fn: () => db.restaurar('movimientos', id) });
     }
     case 'nueva-deuda': return abrirDeuda();
+    case 'saldo-base': return abrirSaldoBase();
+    case 'nuevo-ahorro': return abrirAhorro();
+    case 'editar-ahorro': return abrirAhorro(id);
+    case 'aporte-ahorro': return abrirAporte(id);
+    case 'eliminar-ahorro': {
+      const a = db.obtener('ahorros', id);
+      if (!confirm(`¿Eliminar «${a.nombre}»? Los gastos o ingresos ya registrados se mantienen.`)) return;
+      cerrarDialogo();
+      await db.eliminar('ahorros', id);
+      return toast('Ahorro eliminado', { texto: 'Deshacer', fn: () => db.restaurar('ahorros', id) });
+    }
     case 'abrir-deuda': return abrirDeuda(id);
     case 'abonar': return abrirAbono(id);
     case 'ver-saldadas': ui.verSaldadas = !ui.verSaldadas; return render();
@@ -1758,6 +1873,47 @@ document.addEventListener('submit', async ev => {
     if (fin.mesDe(m.fecha) !== ui.fmes) ui.fmes = fin.mesDe(m.fecha);
     return toast(previo.clase ? 'Cambios guardados' : `${m.clase === 'gasto' ? 'Gasto' : 'Ingreso'} de ${fin.pesos(monto)} registrado`);
   }
+  if (tipo === 'saldo-base') {
+    const fd = new FormData(f);
+    const monto = fin.leerMonto(fd.get('monto'));
+    const fecha = fd.get('fecha') || hoy();
+    const previa = fin.saldoBase(db.lista('movimientos'));
+    cerrarDialogo();
+    // Un solo saldo inicial: se actualiza el existente
+    await db.guardar('movimientos', { ...(previa || { id: uid() }), clase: 'base', monto, fecha, categoria: '', descripcion: 'Saldo inicial', creadoEn: Date.now() });
+    ui.fmes = fin.mesActual();
+    return toast(`Saldo inicial guardado: ${fin.pesos(monto)}`);
+  }
+  if (tipo === 'ahorro') {
+    const fd = new FormData(f);
+    const previo = db.obtener('ahorros', f.dataset.id) || { id: f.dataset.id, historial: [] };
+    const monto = fin.leerMonto(fd.get('monto'));
+    const a = { ...previo, nombre: fd.get('nombre').trim(), monto, meta: fin.leerMonto(fd.get('meta')), nota: fd.get('nota').trim() };
+    if (previo.nombre && monto !== previo.monto) a.historial = [...(previo.historial || []), { id: uid(), fecha: hoy(), monto: monto - (previo.monto || 0), nota: 'Ajuste de valor' }];
+    cerrarDialogo();
+    await db.guardar('ahorros', a);
+    ui.fpestana = 'ahorros';
+    if (ui.vista === 'finanzas') render();
+    return toast(previo.nombre ? 'Cambios guardados' : `Ahorro agregado: ${fin.pesos(monto)}`);
+  }
+  if (tipo === 'aporte') {
+    const fd = new FormData(f);
+    const a = db.obtener('ahorros', f.dataset.id);
+    const valor = fin.leerMonto(fd.get('monto'));
+    if (!valor) return toast('Escribe el valor.');
+    const agregar = fd.get('tipo') === 'agregar';
+    if (!agregar && valor > (a.monto || 0)) return toast(`No puedes retirar más de ${fin.pesos(a.monto)}.`);
+    const mov = { id: uid(), fecha: fd.get('fecha') || hoy(), monto: agregar ? valor : -valor, nota: fd.get('nota').trim() };
+    if (fd.get('registrar') === 'on') {
+      const m = { id: uid(), clase: agregar ? 'gasto' : 'ingreso', monto: valor, fecha: mov.fecha, categoria: agregar ? 'Ahorro' : 'Otros ingresos',
+        descripcion: `${agregar ? 'Ahorro en' : 'Retiro de'} ${a.nombre}${mov.nota ? ' · ' + mov.nota : ''}`, ahorroId: a.id };
+      await db.guardar('movimientos', m);
+      mov.movimientoId = m.id;
+    }
+    cerrarDialogo();
+    const nuevo = await db.guardar('ahorros', { ...a, monto: (a.monto || 0) + mov.monto, historial: [...(a.historial || []), mov] });
+    return toast(`${a.nombre}: ${fin.pesos(nuevo.monto)}`);
+  }
   if (tipo === 'deuda') {
     const fd = new FormData(f);
     const monto = fin.leerMonto(fd.get('monto'));
@@ -1841,6 +1997,7 @@ document.addEventListener('change', async ev => {
   if (c === 'area-filtro') { ui.areaId = t.value || null; render(); }
   if (c === 'cuaderno-nota') { const n = db.obtener('notas', ui.notaId); await db.guardar('notas', { ...n, areaId: t.value || null }, { silencioso: true }); }
   if (c === 'tema') { localStorage.setItem('ga-tema', t.value); aplicarTema(t.value); }
+  if (c === 'tipo-aporte') { const e = $('#txt-registrar'); if (e) e.textContent = t.value === 'agregar' ? 'Descontarlo del disponible (se registra como gasto «Ahorro»)' : 'Sumarlo al disponible (se registra como ingreso)'; }
   if (c === 'clase-mov') { const sel = $('#dlg select[name=categoria]'); if (sel) sel.innerHTML = opcionesCategorias(t.value); }
 });
 
@@ -1862,7 +2019,7 @@ function atajos(ev) {
 
 function accionPrincipal(teclado = false) {
   if (ui.vista === 'notas') return nuevaNota();
-  if (ui.vista === 'finanzas') return ui.fpestana === 'deudas' ? abrirDeuda() : abrirMovimiento();
+  if (ui.vista === 'finanzas') return ui.fpestana === 'deudas' ? abrirDeuda() : ui.fpestana === 'ahorros' ? abrirAhorro() : abrirMovimiento();
   if (ui.vista === 'habitos') return abrirHabito();
   if (teclado && $('#captura')) return $('#captura').focus();
   return abrirTarea(null);

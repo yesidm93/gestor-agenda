@@ -29,8 +29,11 @@ export function nombreMes(mes) {
   return t[0].toUpperCase() + t.slice(1);
 }
 
+/** Solo gastos e ingresos (excluye el registro de saldo inicial) */
+export const reales = movs => movs.filter(m => m.clase === 'gasto' || m.clase === 'ingreso');
+
 export function resumenMes(movs, mes) {
-  const delMes = movs.filter(m => mesDe(m.fecha) === mes);
+  const delMes = reales(movs).filter(m => mesDe(m.fecha) === mes);
   const ingresos = delMes.filter(m => m.clase === 'ingreso').reduce((s, m) => s + m.monto, 0);
   const gastos = delMes.filter(m => m.clase === 'gasto').reduce((s, m) => s + m.monto, 0);
   const porCategoria = new Map();
@@ -52,6 +55,7 @@ export function diasHasta(ymd) {
 
 /** CSV para Excel (separador ; y BOM para que abra bien las tildes) */
 export function movimientosCSV(movs) {
+  movs = reales(movs);
   const cab = ['Fecha', 'Tipo', 'Categoría', 'Descripción', 'Monto'];
   const filas = movs.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map(m => [
     m.fecha, m.clase === 'gasto' ? 'Gasto' : 'Ingreso', m.categoria || '', (m.descripcion || '').replace(/[\r\n]+/g, ' '),
@@ -60,3 +64,34 @@ export function movimientosCSV(movs) {
   const esc = v => /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
   return '﻿' + [cab, ...filas].map(f => f.map(esc).join(';')).join('\r\n');
 }
+
+// ---------------- Saldo inicial y disponible ----------------
+/** El saldo inicial es un movimiento especial (clase "base"); vale el más reciente */
+export function saldoBase(movs) {
+  return movs.filter(m => m.clase === 'base').sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.creadoEn || 0) - (a.creadoEn || 0))[0] || null;
+}
+
+const ultimoDiaMes = mes => { const [y, m] = mes.split('-').map(Number); return `${mes}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`; };
+
+/**
+ * Dinero disponible al final del mes (o hoy, si es el mes actual):
+ * saldo inicial + ingresos − gastos registrados después de fijarlo.
+ * Devuelve null si el mes es anterior al saldo inicial o no hay saldo inicial.
+ */
+export function disponible(movs, mes) {
+  const base = saldoBase(movs);
+  if (!base) return null;
+  const hasta = mes === mesActual() ? hoy() : ultimoDiaMes(mes);
+  if (hasta < base.fecha) return null;
+  let total = Number(base.monto) || 0;
+  for (const m of reales(movs)) {
+    const despues = m.fecha > base.fecha || (m.fecha === base.fecha && (m.creadoEn || 0) > (base.creadoEn || 0));
+    if (!despues || m.fecha > hasta) continue;
+    total += m.clase === 'ingreso' ? m.monto : -m.monto;
+  }
+  return total;
+}
+
+// ---------------- Ahorros ----------------
+export const totalAhorros = ahorros => ahorros.reduce((s, a) => s + (Number(a.monto) || 0), 0);
+export const avanceMeta = a => (a.meta ? Math.min(100, Math.round(((Number(a.monto) || 0) / a.meta) * 100)) : null);

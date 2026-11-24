@@ -1,9 +1,9 @@
 // Almacenamiento local (IndexedDB) + estado en memoria
 // Cada registro lleva: id, creadoEn, actualizadoEn (ms), eliminado, _dirty (pendiente de subir)
 
-export const TIPOS = ['areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas'];
+export const TIPOS = ['areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas', 'ahorros'];
 const DB_NAME = 'gestor-agenda';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 // La misma función de actualización la usa el service worker (sw.js). Si cambias una, cambia la otra.
 export function upgradeDB(db) {
