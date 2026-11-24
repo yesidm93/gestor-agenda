@@ -74,6 +74,8 @@ Para revisar si el servidor está enviando, en el SQL Editor:
 
 ## 5. Traer tus notas de Xiaomi
 
+- **Notas exportadas como texto (.txt):** en tu app de notas usa *Exportar → como texto*. En Gestor agenda: **Notas → Importar → Elegir archivos de texto** y marca todos los .txt. La primera línea de cada nota se usa como título (si el archivo tiene un nombre propio, se usa ese nombre).
+
 - **Archivos .md:** exporta desde Notas de Xiaomi → en la app, **Notas → Importar** (o Ajustes → Importar notas) → selecciona todos los archivos (o el .zip). Revisa la lista y pulsa *Importar*.
 - **Desde Compartir:** abre una nota en Xiaomi → Compartir → *Gestor agenda*. Si compartes un archivo .md se abre la vista previa; si compartes texto, se crea la nota directamente.
 - **Pegar:** Ajustes → *Pegar notas*, separando cada nota con una línea `---`.

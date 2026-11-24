@@ -68,6 +68,35 @@ export function parsearMarkdown(texto, nombre, fechaArchivo) {
   return { titulo: titulo.trim() || 'Sin título', contenido, etiquetas, creadoEn, cuaderno, origen: nombre || 'texto' };
 }
 
+const NOMBRE_GENERICO = /^(?:[\d\s_.:-]+|(?:nota|notas|note|notes|texto|text|xiaomi|mi ?notes?|untitled|sin t[ií]tulo)[\s_.:\d()-]*)$/i;
+
+/**
+ * Nota exportada como texto (.txt): la primera línea corta es el título.
+ * Si el archivo tiene un nombre genérico (números, "nota_123"), nunca se usa como título.
+ */
+export function parsearTextoPlano(texto, nombre, fechaArchivo) {
+  const limpio = String(texto).replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/^\s*\n/, '').replace(/\s+$/, '');
+  const lineas = limpio.split('\n');
+  const primera = (lineas[0] || '').trim();
+  const base = (nombre || '').replace(/^.*\//, '').replace(/\.[^.]+$/, '');
+  const generico = !base || NOMBRE_GENERICO.test(base);
+  const recortar = t => (t.length > 60 ? t.slice(0, 60).replace(/\s+\S*$/, '') + '…' : t);
+
+  // Varias líneas y la primera es corta → es el título
+  if (lineas.length > 1 && primera && primera.length <= 100) {
+    return parsearMarkdown(`# ${primera.replace(/^#+\s*/, '')}\n\n${lineas.slice(1).join('\n')}`, nombre, fechaArchivo);
+  }
+  // Archivo con nombre propio → ese nombre es el título y todo el texto es el contenido
+  if (!generico) return parsearMarkdown(limpio, nombre, fechaArchivo);
+  // Nombre genérico y sin título claro → título con el comienzo del texto, sin perder nada
+  const n = parsearMarkdown(`# ${recortar(primera) || 'Sin título'}\n\n`, '', fechaArchivo);
+  n.contenido = (primera.length > 60 || lineas.length > 1 ? limpio : '') + '\n';
+  n.etiquetas = extraerEtiquetas(n.contenido);
+  return n;
+}
+
+const esTextoPlano = (nombre, tipo) => /\.txt$/i.test(nombre || '') || (tipo === 'text/plain' && !/\.(md|markdown|mdown)$/i.test(nombre || ''));
+
 export const huellaNota = n => hashTexto((n.titulo || '') + '\n' + (n.contenido || ''));
 
 async function imagenADataURL(blob) {
@@ -126,7 +155,7 @@ export async function leerArchivos(files) {
       for (const [ruta, entrada] of Object.entries(archivos)) {
         if (!EXT_TEXTO.test(ruta)) continue;
         const texto = await entrada.async('string');
-        const n = parsearMarkdown(texto, ruta, entrada.date?.getTime());
+        const n = (esTextoPlano(ruta, '') ? parsearTextoPlano : parsearMarkdown)(texto, ruta, entrada.date?.getTime());
         const dir = ruta.includes('/') ? ruta.slice(0, ruta.lastIndexOf('/')) : '';
         const r = await incrustarImagenes(n.contenido, dir, archivos);
         n.contenido = r.contenido;
@@ -136,7 +165,7 @@ export async function leerArchivos(files) {
       }
     } else if (EXT_TEXTO.test(nombre) || /^text\//.test(f.type) || f.type === '' || f.type === 'application/octet-stream') {
       const texto = await f.text();
-      candidatas.push(parsearMarkdown(texto, nombre, f.lastModified));
+      candidatas.push((esTextoPlano(nombre, f.type) ? parsearTextoPlano : parsearMarkdown)(texto, nombre, f.lastModified));
     } else {
       avisos.push(`${nombre}: formato no compatible`);
     }
@@ -147,7 +176,7 @@ export async function leerArchivos(files) {
 /** Divide un texto pegado en varias notas usando "---" en una línea sola */
 export function dividirTexto(texto) {
   return String(texto).replace(/\r\n/g, '\n').split(/\n\s*-{3,}\s*\n/).map(t => t.trim()).filter(Boolean)
-    .map(t => parsearMarkdown(t, '', Date.now()));
+    .map(t => parsearTextoPlano(t, '', Date.now()));
 }
 
 export function candidataANota(c, areaId) {

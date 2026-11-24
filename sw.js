@@ -1,6 +1,6 @@
 // Service worker: funciona sin conexión y recibe lo que se comparte desde el celular.
 // Cambia VERSION cada vez que publiques cambios para que los dispositivos se actualicen.
-const VERSION = 'ga-v1.3.0';
+const VERSION = 'ga-v1.3.1';
 
 const ARCHIVOS = [
   './',

@@ -744,3 +744,11 @@ dialog:has(.formulario.ancho) { width: min(720px, calc(100vw - 32px)); }
 /* Texto recibido desde "Compartir" */
 .texto-recibido { margin: 0; max-height: 30dvh; overflow: auto; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 0.9rem; color: var(--grafito); background: var(--suave); border-radius: var(--r-m); padding: 10px 12px; }
 .guia ul.ayuda { padding-left: 1.1em; margin: 6px 0 0; display: grid; gap: 4px; }
+
+/* Opciones de importación de notas */
+.opcion-import { display: grid; gap: 4px; width: 100%; padding: 12px 14px; text-align: left; border: 1px solid var(--linea); border-radius: var(--r-m); background: var(--superficie); cursor: pointer; }
+.opcion-import:hover { border-color: var(--grafito); }
+.opcion-import > b { display: flex; align-items: center; gap: 8px; }
+.opcion-import > b svg { width: 18px; height: 18px; }
+.opcion-import small { color: var(--grafito); font-size: 0.86rem; line-height: 1.4; }
+.opcion-import.info { cursor: default; background: var(--suave); border-color: transparent; }

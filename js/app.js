@@ -918,7 +918,7 @@ function pintarListaNotas() {
       <span class="nota-item-resumen">${esc(resumenTexto(n.contenido)) || '<em>Vacía</em>'}</span>
       <span class="nota-item-meta">${a ? `<span><i class="punto" style="--c:${a.color}"></i>${esc(a.nombre)}</span>` : ''}<span>${fechaAmigable(ymdLocal(n.actualizadoEn))}</span></span>
     </a></li>`;
-  }).join('') : `<li class="vacio">${todas.length ? 'Ninguna nota coincide con la búsqueda.' : 'Aún no tienes notas. Crea una o importa tus archivos Markdown.'}</li>`;
+  }).join('') : `<li class="vacio">${todas.length ? 'Ninguna nota coincide con la búsqueda.' : 'Aún no tienes notas. Crea una o pulsa Importar para traer las de tu celular.'}</li>`;
 }
 
 const ymdLocal = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -1148,12 +1148,34 @@ async function confirmarImport(form) {
   ir('notas');
 }
 
+function abrirImportarNotas() {
+  abrirDialogo(`
+    <div class="formulario">
+      <header class="dlg-cabecera"><h2>Importar notas</h2>
+        <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
+      <button class="opcion-import" data-accion="importar-archivos">
+        <b>${I.importar}Elegir archivos de texto</b>
+        <small>Las notas que exportaste <b>como texto (.txt)</b> desde tu celular. Puedes marcar varias a la vez. También sirven .md o un .zip.</small>
+      </button>
+      <button class="opcion-import" data-accion="pegar">
+        <b>${I.copiar}Pegar el texto de una nota</b>
+        <small>Abre la nota en tu celular, <b>Seleccionar todo → Copiar</b> y pégala. La primera línea será el título.</small>
+      </button>
+      <div class="opcion-import info">
+        <b>Desde la app de notas</b>
+        <small>Abre la nota → <b>Compartir → Compartir nota como texto → Gestor agenda</b> y elige <b>Guardar como nota</b>. Funciona con la app instalada en el celular.</small>
+      </div>
+    </div>`);
+}
+
 function abrirPegar() {
   abrirDialogo(`
     <form method="dialog" class="formulario" data-form="pegar">
       <header class="dlg-cabecera"><h2>Pegar notas</h2>
         <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
-      <p class="ayuda">Pega el texto de una o varias notas. Separa cada nota con una línea que solo tenga <code>---</code>. La primera línea de cada una será el título.</p>
+      <p class="ayuda">Pega el texto de la nota. La primera línea será el título.</p>
+      ${navigator.clipboard?.readText ? `<button type="button" class="btn" data-accion="leer-portapapeles">${I.copiar}Pegar lo que copié</button>` : ''}
+      <p class="ayuda">¿Varias notas a la vez? Sepáralas con una línea que solo tenga <code>---</code>.</p>
       <label class="campo"><span class="sr-only">Texto</span><textarea name="texto" rows="10" required></textarea></label>
       <footer class="dlg-pie"><span class="separador"></span>
         <button type="button" class="btn" data-accion="cerrar-dialogo">Cancelar</button>
@@ -1181,8 +1203,8 @@ async function procesarCompartido() {
       <pre class="texto-recibido">${esc(texto.slice(0, 600))}${texto.length > 600 ? '…' : ''}</pre>
       <p class="ayuda">¿Qué quieres crear con él?</p>
       <div class="fila-botones">
-        <button class="btn btn-primario" data-accion="compartido-tareas">${lineas > 1 ? `Tareas (una por línea)` : 'Una tarea'}</button>
-        <button class="btn" data-accion="compartido-nota">Una nota</button>
+        <button class="btn btn-primario" data-accion="compartido-nota">Guardar como nota</button>
+        <button class="btn" data-accion="compartido-tareas">${lineas > 1 ? 'Crear tareas (una por línea)' : 'Crear una tarea'}</button>
       </div>
     </div>`);
 }
@@ -1193,7 +1215,7 @@ async function compartidoComoNota() {
   const it = textoCompartido;
   if (!it) return;
   const texto = it.texto;
-  const c = imp.parsearMarkdown(it.title ? `# ${it.title}\n\n${texto}` : texto, '', Date.now());
+  const c = it.titulo ? imp.parsearMarkdown(`# ${it.titulo}\n\n${texto}`, '', Date.now()) : imp.parsearTextoPlano(texto, '', Date.now());
   const n = imp.candidataANota(c, null);
   await db.guardar('notas', n);
   cerrarDialogo();
@@ -1360,9 +1382,9 @@ async function vistaAjustes() {
       </section>
 
       <section class="panel"><h2>Importar notas y tareas</h2>
-        <p class="ayuda">Archivos Markdown (.md), de texto (.txt) o un .zip con varios. Antes de guardar verás la lista para elegir cuáles traer.</p>
+        <p class="ayuda">Notas exportadas como texto (.txt) o Markdown (.md), o un .zip con varias. Antes de guardar verás la lista para elegir cuáles traer.</p>
         <div class="fila-botones">
-          <button class="btn btn-primario" data-accion="importar">${I.importar}Elegir archivos</button>
+          <button class="btn btn-primario" data-accion="importar-archivos">${I.importar}Elegir archivos</button>
           <button class="btn" data-accion="pegar">Pegar notas</button>
           <button class="btn" data-accion="pegar-tareas">Pegar tareas</button>
         </div>
@@ -1563,7 +1585,8 @@ async function alHacerClic(ev) {
       return guardarNotaYa().then(pintarEditorNota);
     }
     case 'pendientes-a-tareas': await guardarNotaYa(); return pendientesATareas();
-    case 'importar': return elegirArchivos();
+    case 'importar': return abrirImportarNotas();
+    case 'importar-archivos': cerrarDialogo(); return elegirArchivos();
     case 'pegar-tareas': return abrirPegarTareas();
     case 'volver-pegar': return abrirPegarTareas(previsualizarTareas.texto || '');
     case 'leer-portapapeles': {
