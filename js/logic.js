@@ -174,7 +174,7 @@ const MARCA_PENDIENTE = /^(?:\[\s?\]|\(\s?\)|[☐□◻○◯▢⬜]|[-*+•·�
  * Convierte texto copiado en tareas: una por línea.
  * Entiende casillas (☐ ☑ [ ] [x]), viñetas, números, fechas y horas
  * ("mañana 3pm", "viernes", "28/11"), #área, "!" para prioridad alta,
- * líneas "Área:" como encabezado y líneas con sangría como notas de la anterior.
+ * líneas "Área:" como encabezado; con sangría: subtarea (si tiene casilla o viñeta) o nota.
  */
 export function parsearListaTareas(texto, areas) {
   const out = [];
@@ -193,6 +193,11 @@ export function parsearListaTareas(texto, areas) {
       const nombre = norm(l.slice(0, -1));
       const a = areas.find(a => norm(a.nombre) === nombre);
       areaActual = a ? a.id : null;
+      continue;
+    }
+    // Línea con sangría y con marca → subtarea de la anterior
+    if (marcada && /^(\s{2,}|\t)/.test(bruta) && out.length) {
+      (out[out.length - 1].subtareas ||= []).push({ titulo: l, hecha });
       continue;
     }
     // Línea con sangría y sin marca → detalle de la tarea anterior

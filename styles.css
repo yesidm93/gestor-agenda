@@ -758,3 +758,43 @@ dialog:has(.formulario.ancho) { width: min(720px, calc(100vw - 32px)); }
 .resumen-mes .disponible button.btn-base:hover { text-decoration: underline; }
 .resumen-mes .disponible.sin-base dd { font-size: var(--t-l); }
 .resumen-mes .disponible.sin-base .btn { margin-top: 10px; background: var(--resaltador); color: var(--sobre-resaltador); border-color: transparent; }
+
+/* ---------------------------------------------------------------------
+   Subtareas
+   --------------------------------------------------------------------- */
+.tarea.con-subs { flex-wrap: wrap; }
+.sub-resumen {
+  flex: none; align-self: center; display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 10px; margin-right: 2px; border: 1px solid var(--linea); border-radius: 99px;
+  background: var(--superficie); color: var(--grafito); font-weight: 700; font-size: var(--t-xs); cursor: pointer;
+}
+.sub-resumen[aria-expanded='true'] { background: var(--suave); color: var(--tinta); }
+.sub-resumen.completas { color: var(--hecho); }
+.sub-anillo { width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(var(--hecho) calc(var(--p) * 1%), var(--linea) 0); -webkit-mask: radial-gradient(circle, transparent 3.5px, #000 4px); mask: radial-gradient(circle, transparent 3.5px, #000 4px); }
+.subtareas { flex-basis: 100%; padding: 0 0 10px 44px; }
+.subtareas ul { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--linea); }
+.subtareas li { display: flex; align-items: center; gap: 2px; min-height: 36px; padding-left: 4px; }
+.subtareas li span { font-size: 0.95rem; overflow-wrap: anywhere; }
+.subtareas li.hecha span { color: var(--grafito); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--grafito) 60%, transparent); }
+.check-sub { flex: none; width: 34px; height: 34px; border: 0; background: none; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.check-sub::before { content: ''; width: 16px; height: 16px; border-radius: 5px; border: 2px solid var(--grafito); background: var(--superficie); }
+.check-sub[aria-checked='true']::before {
+  background: var(--hecho) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12.5 4 4 8-9'/%3E%3C/svg%3E") center/12px no-repeat;
+  border-color: var(--hecho);
+}
+.sub-nueva { padding: 4px 0 0 6px; border-left: 2px solid var(--linea); }
+.sub-nueva input { width: 100%; height: 34px; border: 0; border-bottom: 1px dashed var(--linea); background: none; outline: none; font-size: 0.93rem; color: var(--tinta); padding: 0 4px; }
+.sub-nueva input:focus { border-bottom-color: var(--enfoque); }
+
+/* Subtareas dentro de la ventana de la tarea */
+.lista-sub-dlg { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sub-dlg { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+.sub-dlg input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--hecho); margin: 0; }
+.sub-dlg input[name='subTitulo'] { min-height: 38px; padding: 6px 10px; border: 1px solid var(--linea); border-radius: 9px; background: var(--papel); min-width: 0; }
+.sub-dlg input[name='subTitulo']:focus { outline: none; border-color: var(--enfoque); }
+.sub-dlg .btn-icono { width: 32px; height: 32px; }
+.sub-dlg .btn-icono svg { width: 16px; height: 16px; }
+.sub-agregar { display: flex; gap: 8px; }
+.sub-agregar input { flex: 1; min-width: 0; min-height: 38px; padding: 6px 10px; border: 1px dashed var(--linea); border-radius: 9px; background: var(--papel); }
+.sub-agregar input:focus { outline: none; border-color: var(--enfoque); border-style: solid; }
+@media (max-width: 899px) { .subtareas { padding-left: 38px; } }

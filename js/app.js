@@ -41,6 +41,7 @@ const ui = {
   fmes: fin.mesActual(),
   fpestana: 'mes',
   verSaldadas: false,
+  desplegadas: new Set(),
 };
 
 let eventoInstalar = null;
@@ -213,13 +214,46 @@ function htmlTarea(t, { mostrarFecha = true } = {}) {
   if (t.aviso?.activo && t.avisarEn && !t.completada) meta.push(`<span class="${avisoActivo(t) ? 'meta-aviso' : ''}">${I.campanaMini}${textoAviso(t)}</span>`);
   if (t.pago?.monto) meta.push(`<span>${I.moneda}${fin.pesos(t.pago.monto)}</span>`);
   if (t.notas) meta.push('<span class="meta-notas">con notas</span>');
-  return `<li class="tarea prio-${t.prioridad || 'media'}${t.completada ? ' hecha' : ''}${esVencida(t) ? ' vencida' : ''}" data-id="${t.id}">
+  const subs = t.subtareas || [];
+  const hechasSub = subs.filter(x => x.hecha).length;
+  const abierta = ui.desplegadas.has(t.id);
+  return `<li class="tarea prio-${t.prioridad || 'media'}${t.completada ? ' hecha' : ''}${esVencida(t) ? ' vencida' : ''}${subs.length ? ' con-subs' : ''}" data-id="${t.id}">
     <button class="check" data-accion="alternar-tarea" data-id="${t.id}" role="checkbox" aria-checked="${!!t.completada}" aria-label="Marcar «${esc(t.titulo)}» como ${t.completada ? 'pendiente' : 'hecha'}"></button>
     <button class="tarea-cuerpo" data-accion="editar-tarea" data-id="${t.id}">
       <span class="tarea-titulo"><span class="marca">${esc(t.titulo)}</span></span>
       ${meta.length ? `<span class="tarea-meta">${meta.join('')}</span>` : ''}
     </button>
+    ${subs.length ? `<button class="sub-resumen${hechasSub === subs.length ? ' completas' : ''}" data-accion="desplegar-subs" data-id="${t.id}" aria-expanded="${abierta}" aria-label="${abierta ? 'Ocultar' : 'Ver'} subtareas: ${hechasSub} de ${subs.length} hechas">
+      <span class="sub-anillo" style="--p:${Math.round((hechasSub / subs.length) * 100)}"></span>${hechasSub}/${subs.length}</button>` : ''}
+    ${subs.length && abierta ? `<div class="subtareas">
+      <ul>${subs.map(x => `<li class="${x.hecha ? 'hecha' : ''}">
+        <button class="check-sub" data-accion="alternar-sub" data-id="${t.id}" data-valor="${x.id}" role="checkbox" aria-checked="${!!x.hecha}" aria-label="Marcar «${esc(x.titulo)}»"></button>
+        <span>${esc(x.titulo)}</span></li>`).join('')}</ul>
+      <form class="sub-nueva" data-form="sub-rapida" data-id="${t.id}">
+        <input name="titulo" placeholder="Agregar subtarea" autocomplete="off" enterkeyhint="done" aria-label="Nueva subtarea de ${esc(t.titulo)}">
+      </form>
+    </div>` : ''}
   </li>`;
+}
+
+function filaSubDlg(x = { id: uid(), titulo: '', hecha: false }) {
+  return `<li class="sub-dlg" data-sub="${x.id}">
+    <input type="hidden" name="subId" value="${x.id}">
+    <input type="checkbox" name="subHecha" value="${x.id}" ${x.hecha ? 'checked' : ''} aria-label="Hecha">
+    <input name="subTitulo" value="${esc(x.titulo)}" aria-label="Subtarea" autocomplete="off">
+    <button type="button" class="btn-icono" data-accion="quitar-sub-dlg" aria-label="Quitar subtarea">${I.cerrar}</button>
+  </li>`;
+}
+
+async function alternarSub(tid, sid) {
+  const t = db.obtener('tareas', tid);
+  if (!t) return;
+  const subtareas = (t.subtareas || []).map(x => (x.id === sid ? { ...x, hecha: !x.hecha } : x));
+  ui.desplegadas.add(tid);
+  await db.guardar('tareas', { ...t, subtareas });
+  if (!t.completada && subtareas.length && subtareas.every(x => x.hecha)) {
+    toast('Todas las subtareas están listas', { texto: 'Marcar la tarea hecha', fn: () => alternarTarea(tid) });
+  }
 }
 
 function textoAviso(t) {
@@ -391,6 +425,14 @@ function abrirTarea(id, valores = {}) {
       <div class="campo"><span id="lbl-prio">Prioridad</span><div class="segmentado" role="radiogroup" aria-labelledby="lbl-prio">
         ${['alta', 'media', 'baja'].map(p => `<label><input type="radio" name="prioridad" value="${p}" ${p === (t.prioridad || 'media') ? 'checked' : ''}><span>${p[0].toUpperCase() + p.slice(1)}</span></label>`).join('')}
       </div></div>
+      <section class="subseccion">
+        <h3>Subtareas</h3>
+        <ul class="lista-sub-dlg" id="lista-sub-dlg">${(t.subtareas || []).map(filaSubDlg).join('')}</ul>
+        <div class="sub-agregar">
+          <input id="nueva-sub" placeholder="Agregar subtarea y pulsar Enter" autocomplete="off" enterkeyhint="enter" aria-label="Nueva subtarea">
+          <button type="button" class="btn" data-accion="agregar-sub-dlg">${I.mas}Agregar</button>
+        </div>
+      </section>
       <section class="subseccion aviso-config">
         <label class="interruptor"><input type="checkbox" name="avisoActivo" ${t.aviso?.activo ? 'checked' : ''}><span class="interruptor-pista" aria-hidden="true"></span>
           <span><b>Avisarme</b><small>Notificación que se repite hasta que marques la tarea como hecha</small></span></label>
@@ -436,6 +478,13 @@ async function guardarTareaDesdeForm(form) {
     recurrencia: fd.get('recurrencia') || '',
     prioridad: fd.get('prioridad') || 'media',
     notas: fd.get('notas').trim(),
+    subtareas: (() => {
+      const ids = fd.getAll('subId'), titulos = fd.getAll('subTitulo'), hechas = new Set(fd.getAll('subHecha'));
+      const pendiente = $('#nueva-sub')?.value.trim();
+      const lista = ids.map((id, i) => ({ id, titulo: String(titulos[i] || '').trim(), hecha: hechas.has(id) })).filter(x => x.titulo);
+      if (pendiente) lista.push({ id: uid(), titulo: pendiente, hecha: false });
+      return lista;
+    })(),
     aviso: { activo: fd.get('avisoActivo') === 'on', diasAntes: Number(fd.get('avisoDias')) || 0, hora: fd.get('avisoHora') || '08:00', repetirMin: Number(fd.get('avisoRepetir')) || 60 },
     pago: { monto: fin.leerMonto(fd.get('pagoMonto')), categoria: fd.get('pagoCategoria') || 'Servicios' },
   };
@@ -479,7 +528,7 @@ async function completarTarea(t, gasto = null) {
   let msg;
   if (t.recurrencia) {
     const prox = proximaFecha(t.fecha, t.recurrencia);
-    const n = { ...t, fecha: prox, vecesHecha: (t.vecesHecha || 0) + 1, ultimaVez: Date.now() };
+    const n = { ...t, fecha: prox, vecesHecha: (t.vecesHecha || 0) + 1, ultimaVez: Date.now(), subtareas: (t.subtareas || []).map(x => ({ ...x, hecha: false })) };
     n.avisarEn = calcularAvisarEn(n);
     await db.guardar('tareas', n);
     msg = `Hecha. Se repite ${fechaAmigable(prox).toLowerCase()}`;
@@ -490,6 +539,15 @@ async function completarTarea(t, gasto = null) {
   if (mov) msg += `. Gasto de ${fin.pesos(mov.monto)} registrado`;
   avisos.cerrarNotificacion(t.id);
   toast(msg, { texto: 'Deshacer', fn: async () => { await db.guardar('tareas', previa); if (mov) await db.eliminar('movimientos', mov.id); } });
+}
+
+function agregarSubDlg() {
+  const inp = $('#nueva-sub');
+  const titulo = inp?.value.trim();
+  if (!titulo) return inp?.focus();
+  $('#lista-sub-dlg').insertAdjacentHTML('beforeend', filaSubDlg({ id: uid(), titulo, hecha: false }));
+  inp.value = '';
+  inp.focus();
 }
 
 function abrirPagoTarea(t) {
@@ -1390,6 +1448,7 @@ function previsualizarTareas(texto) {
               ${it.hecha ? '<span class="insignia">Ya hecha</span>' : ''}${it.duplicada ? '<span class="insignia">Ya existe</span>' : ''}
               ${it.fecha ? `<span>${fechaAmigable(it.fecha)}</span>` : ''}${it.hora ? `<span>${horaAmigable(it.hora)}</span>` : ''}
               ${a ? `<span><i class="punto" style="--c:${a.color}"></i> ${esc(a.nombre)}</span>` : ''}${it.prioridad === 'alta' ? '<span>Prioridad alta</span>' : ''}
+              ${it.subtareas?.length ? `<span>${it.subtareas.length} subtarea${it.subtareas.length > 1 ? 's' : ''}</span>` : ''}
               ${it.notas ? `<span>${esc(it.notas.slice(0, 60))}</span>` : ''}
             </span></span></label></li>`;
       }).join('')}</ul>
@@ -1412,7 +1471,7 @@ async function crearTareasPegadas(form) {
     let fecha = modoFecha === 'auto' ? it.fecha : fechaFija[modoFecha];
     if (modoFecha === 'auto' && !fecha && it.hora) fecha = hoy();
     return {
-      id: uid(), titulo: it.titulo, notas: it.notas || '', prioridad: it.prioridad || 'media', fecha, hora: it.hora || null,
+      id: uid(), titulo: it.titulo, subtareas: (it.subtareas || []).map(x => ({ id: uid(), titulo: x.titulo, hecha: !!x.hecha })), notas: it.notas || '', prioridad: it.prioridad || 'media', fecha, hora: it.hora || null,
       recurrencia: '', areaId: modoArea === 'auto' ? it.areaId || null : modoArea || null, completada: false,
     };
   });
@@ -1637,6 +1696,10 @@ async function alHacerClic(ev) {
   const { accion, id, valor } = el.dataset;
   switch (accion) {
     case 'alternar-tarea': return alternarTarea(id, el);
+    case 'desplegar-subs': { if (ui.desplegadas.has(id)) ui.desplegadas.delete(id); else ui.desplegadas.add(id); return render(); }
+    case 'alternar-sub': return alternarSub(id, valor);
+    case 'agregar-sub-dlg': return agregarSubDlg();
+    case 'quitar-sub-dlg': el.closest('.sub-dlg')?.remove(); return;
     case 'editar-tarea': return abrirTarea(id);
     case 'eliminar-tarea': {
       cerrarDialogo();
@@ -1826,6 +1889,15 @@ document.addEventListener('submit', async ev => {
   const tipo = f.dataset.form;
   if (!tipo) return;
   ev.preventDefault();
+  if (tipo === 'sub-rapida') {
+    const titulo = f.titulo.value.trim();
+    const t = db.obtener('tareas', f.dataset.id);
+    if (!titulo || !t) return;
+    ui.desplegadas.add(t.id);
+    await db.guardar('tareas', { ...t, subtareas: [...(t.subtareas || []), { id: uid(), titulo, hecha: false }] });
+    $(`.tarea[data-id="${t.id}"] .sub-nueva input`)?.focus();
+    return;
+  }
   if (tipo === 'captura') { await agregarRapido(f); f.reset(); $('#captura')?.focus(); return; }
   if (tipo === 'tarea') return guardarTareaDesdeForm(f);
   if (tipo === 'habito') {
@@ -2004,6 +2076,7 @@ document.addEventListener('change', async ev => {
 $('#dlg').addEventListener('close', () => { if (ui.vista !== 'notas') render(); });
 
 function atajos(ev) {
+  if (ev.target.id === 'nueva-sub' && ev.key === 'Enter') { ev.preventDefault(); agregarSubDlg(); return; }
   if (ev.target.id === 'nota-titulo' && ev.key === 'Enter') { ev.preventDefault(); $('#nota-contenido')?.focus(); return; }
   const enCampo = ev.target.closest('input, textarea, select, [contenteditable]');
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') {
