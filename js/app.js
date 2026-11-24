@@ -355,11 +355,11 @@ function vistaTareas() {
     ${capturaRapida(a ? `Agregar tarea en ${a.nombre}` : 'Agregar tarea', 'tareas')}
     <div class="filtros" role="tablist" aria-label="Filtrar tareas">
       ${Object.entries(FILTROS).map(([k, v]) => `<button role="tab" class="filtro" data-accion="filtro" data-valor="${k}" aria-selected="${f === k}">${v}</button>`).join('')}
-      <label class="filtro-area solo-movil"><span class="sr-only">Área</span>
-        <select data-cambio="area-filtro"><option value="">Todas las áreas</option>
-          ${areasOrdenadas().map(x => `<option value="${x.id}" ${x.id === ui.areaId ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}
-        </select></label>
     </div>
+    <label class="filtro-area solo-movil"><span class="sr-only">Área</span>
+      <select data-cambio="area-filtro"><option value="">Todas las áreas</option>
+        ${areasOrdenadas().map(x => `<option value="${x.id}" ${x.id === ui.areaId ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}
+      </select></label>
     ${tareas.length ? [...grupos].map(([k, arr]) => `
       <section class="bloque ${k === 'Atrasadas' ? 'bloque-vencidas' : ''}"><h2>${k} <span class="cuenta">${arr.length}</span></h2>
         ${listaTareas(arr, { mostrarFecha: k === 'Atrasadas' || f === 'hechas' })}</section>`).join('')

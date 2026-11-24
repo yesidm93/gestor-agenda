@@ -51,6 +51,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
+html, body { overflow-x: clip; }
 body {
   margin: 0;
   font: 400 var(--t-m)/1.5 var(--f-texto);
@@ -611,4 +612,131 @@ dialog:has(.formulario.ancho) { width: min(720px, calc(100vw - 32px)); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* =====================================================================
+   CELULAR: escala compacta
+   Todo se reduce en proporción: tipografía base 15 px, controles de 40 px,
+   márgenes de 14 px. En el computador no cambia nada.
+   ===================================================================== */
+@media (max-width: 899px) {
+  html { font-size: 93.75%; }
+  :root { --barra: 58px; --r-l: 14px; }
+  body { line-height: 1.45; }
+  input, select, textarea { min-width: 0; max-width: 100%; }
+
+  .vista { padding: 2px 14px calc(var(--barra) + 84px + env(safe-area-inset-bottom)); }
+  .cabecera-movil { padding: calc(6px + env(safe-area-inset-top)) 10px 6px 14px; gap: 4px; }
+  .cabecera-movil h1 { font-size: 1.15rem; }
+  .cabecera-movil .btn-icono, .estado-sync.compacto { width: 38px; height: 38px; padding: 0; display: grid; place-items: center; }
+  .cabecera-movil svg { width: 20px; height: 20px; }
+
+  /* Barra inferior y botón flotante */
+  .nav-inferior a { font-size: 0.66rem; gap: 1px; }
+  .nav-inferior svg { width: 20px; height: 20px; }
+  .nav-inferior a[aria-current='page'] svg { width: 46px; height: 26px; padding: 3px 13px; }
+  .fab { width: 50px; height: 50px; border-radius: 15px; right: 14px; bottom: calc(var(--barra) + 14px + env(safe-area-inset-bottom)); }
+  .fab svg { width: 22px; height: 22px; }
+  .toast { bottom: calc(var(--barra) + 76px + env(safe-area-inset-bottom)); padding: 10px 14px; font-size: 0.93rem; }
+
+  /* Controles */
+  .btn { min-height: 38px; padding: 0 13px; border-radius: 9px; font-size: 0.93rem; gap: 6px; }
+  .btn svg { width: 16px; height: 16px; }
+  .btn-icono { width: 36px; height: 36px; }
+  .btn-icono svg { width: 20px; height: 20px; }
+  .filtro { height: 32px; padding: 0 12px; font-size: 0.86rem; }
+  .filtros { gap: 6px; }
+  .filtro-area { display: block; margin: 8px 0 0; }
+  .filtro-area select { height: 34px; width: 100%; max-width: 260px; }
+  .vista-cabecera { margin: 4px 0 10px; }
+  .vista-cabecera:not(:has(.acciones:not(.solo-escritorio), .btn-texto)) { display: none; }
+  .bloque { margin: 18px 0; }
+  .bloque > h2 { font-size: 0.93rem; margin-bottom: 2px; }
+  .vacio.grande { padding: 20px 0; }
+
+  /* Hoy */
+  .hoy-cabecera { padding: 0; }
+  .fecha-grande { gap: 10px; }
+  .dia-numero { font-size: clamp(3.4rem, 17vw, 4.6rem); }
+  .dia-texto { font-size: 1.2rem; padding-bottom: 0.3em; }
+  .hoy-resumen { margin: 10px 0 8px; font-size: 0.93rem; }
+  .progreso { height: 5px; }
+  .captura { margin: 14px 0 4px; padding: 4px 4px 4px 12px; border-radius: 12px; gap: 2px 8px; }
+  .captura input { height: 38px; font-size: 1rem; }
+  .captura .btn { min-height: 34px; padding: 0 11px; }
+  .captura-mas svg { width: 18px; height: 18px; }
+  .avisos { margin: 12px 0 2px; padding: 10px 12px; }
+  .avisos li { padding: 6px 0; gap: 6px; }
+  .avisos .btn { min-height: 34px; }
+
+  /* Listas de tareas */
+  .check { width: 38px; height: 42px; }
+  .check::before { width: 20px; height: 20px; border-radius: 6px; }
+  .tarea-cuerpo { padding: 10px 6px 10px 0; gap: 1px; }
+  .tarea-titulo { font-size: 1rem; }
+  .tarea-meta { gap: 2px 10px; font-size: 0.76rem; }
+  .chip-habito { min-height: 42px; padding: 6px 12px; gap: 10px; }
+  .chip-check { width: 18px; height: 18px; }
+
+  /* Hábitos */
+  .habito { padding: 14px 0; gap: 10px; }
+  .habito-nombre { font-size: 1.1rem; }
+  .habito-dato { font-size: 0.82rem; }
+  .semana { grid-template-columns: repeat(7, minmax(30px, 42px)); gap: 5px; }
+  .dia { font-size: 0.82rem; }
+  .mapa { gap: 2px; }
+
+  /* Notas */
+  .buscador { height: 40px; padding: 0 12px; }
+  .nota-item { padding: 11px 10px; margin: 0 -10px; }
+  .editor-barra { top: 50px; margin: 0 -6px 2px; }
+  .selector-cuaderno select { height: 34px; max-width: 42vw; }
+  .nota-titulo { font-size: 1.3rem; padding: 4px 0; }
+  .editor-herramientas { gap: 5px; padding: 4px 0 8px; }
+  .btn-mini { height: 32px; min-width: 32px; padding: 0 8px; font-size: 0.82rem; }
+  .nota-contenido, .nota-render { font-size: 1rem; }
+  .notas-editor { min-height: calc(100dvh - 150px); }
+
+  /* Finanzas */
+  .mes-nav { margin: 8px 0 4px; }
+  .mes-nav h2 { font-size: 1.1rem; min-width: 0; flex: 1; text-align: center; }
+  .resumen-mes { gap: 8px; margin: 6px 0 8px; }
+  .resumen-mes div { padding: 9px 12px; }
+  .resumen-mes dt { font-size: 0.8rem; }
+  .resumen-mes dd { font-size: 1.05rem; }
+  .resumen-mes .disponible dd { font-size: 1.45rem; }
+  .total-deuda { font-size: 1.5rem; }
+  .mov { padding: 8px 0; gap: 10px; }
+  .mov > span:last-child { font-size: 0.93rem; white-space: nowrap; }
+  .deuda { padding: 10px 0; }
+  .monto-grande { font-size: 1.35rem !important; }
+
+  /* Ajustes */
+  .ajustes { gap: 10px; }
+  .panel { padding: 14px; gap: 10px; }
+  .panel > h2 { font-size: 1.1rem; }
+
+  /* Ventanas (hojas inferiores) */
+  dialog .formulario { padding: 16px 14px; gap: 12px; }
+  .dlg-cabecera h2 { font-size: 1.15rem; }
+  .dlg-pie { margin: 0 -14px -16px; padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); bottom: -16px; }
+  .campo { gap: 4px; }
+  .campo > span, .campo > legend { font-size: 0.84rem; }
+  .campo input:not([type='radio']):not([type='checkbox']), .campo select, .campo textarea { min-height: 40px; padding: 8px 10px; border-radius: 9px; }
+  .fila-campos { gap: 10px; }
+  .segmentado span { padding: 6px 13px; font-size: 0.86rem; }
+  .interruptor-pista { width: 40px; height: 24px; }
+  .interruptor-pista::after { width: 18px; height: 18px; }
+  .interruptor input:checked + .interruptor-pista::after { transform: translateX(16px); }
+  .dias-semana span { width: 38px; height: 38px; }
+  .colores span { width: 32px; height: 32px; }
+}
+
+/* Pantallas muy angostas o con letra del sistema grande */
+@media (max-width: 340px) { .fila-campos { grid-template-columns: 1fr; } }
+@media (max-width: 370px) {
+  .resumen-mes { grid-template-columns: 1fr 1fr; }
+  .captura .btn { font-size: 0; padding: 0 10px; }
+  .captura .btn::after { content: '+'; font-size: 1.2rem; }
+  .nav-inferior a span { font-size: 0.62rem; }
 }

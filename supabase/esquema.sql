@@ -152,3 +152,8 @@ $$;
 
 revoke execute on function public.avisos_pendientes() from public, anon, authenticated;
 revoke execute on function public.posponer_aviso(uuid, bigint) from public, anon, authenticated;
+
+-- El servidor (función "avisos") sí necesita usarlas
+grant execute on function public.avisos_pendientes() to service_role;
+grant execute on function public.posponer_aviso(uuid, bigint) to service_role;
+grant select, insert, update, delete on public.registros, public.push_suscripciones, public.avisos_enviados to service_role;
