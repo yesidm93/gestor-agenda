@@ -1,6 +1,6 @@
 // Service worker: funciona sin conexión y recibe lo que se comparte desde el celular.
 // Cambia VERSION cada vez que publiques cambios para que los dispositivos se actualicen.
-const VERSION = 'ga-v1.6.0';
+const VERSION = 'ga-v1.7.0';
 
 const ARCHIVOS = [
   './',
@@ -16,6 +16,7 @@ const ARCHIVOS = [
   './js/icons.js',
   './js/finanzas.js',
   './js/avisos.js',
+  './js/imagenes.js',
   './vendor/marked.umd.js',
   './vendor/purify.min.js',
   './vendor/jszip.min.js',
@@ -48,10 +49,10 @@ self.addEventListener('message', e => {
 // --- IndexedDB mínima para guardar lo compartido (misma estructura que js/db.js) ---
 function abrirDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('gestor-agenda', 3);
+    const r = indexedDB.open('gestor-agenda', 4);
     r.onupgradeneeded = () => {
       const db = r.result;
-      for (const s of ['areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas', 'ahorros']) if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id' });
+      for (const s of ['areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas', 'ahorros', 'imagenes']) if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id' });
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
       if (!db.objectStoreNames.contains('share')) db.createObjectStore('share', { autoIncrement: true });
     };

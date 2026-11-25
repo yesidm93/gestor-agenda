@@ -61,6 +61,9 @@ export function parsearMarkdown(texto, nombre, fechaArchivo) {
     }
   }
   contenido = contenido.replace(/^\n+/, '').replace(/\s+$/, '') + '\n';
+  // Si el título vino en el encabezado y el texto lo repite como "# Título", no duplicarlo
+  const repetido = contenido.match(/^#\s+(.+?)\s*\n/);
+  if (repetido && titulo && repetido[1].trim().toLowerCase() === String(titulo).trim().toLowerCase()) contenido = contenido.slice(repetido[0].length).replace(/^\n+/, '');
   const tagsMeta = [].concat(meta.tags || meta.etiquetas || []).flatMap(t => String(t).split(/[,\s]+/)).map(t => t.replace(/^#/, '').toLowerCase()).filter(Boolean);
   const etiquetas = [...new Set([...tagsMeta, ...extraerEtiquetas(contenido)])];
   const creadoEn = fechaDesde(meta, fechaArchivo);
@@ -193,7 +196,7 @@ export function notaAMarkdown(n, areas) {
   return fm.join('\n') + `# ${n.titulo}\n\n${n.contenido || ''}`;
 }
 
-export async function exportarZip(notas, areas) {
+export async function exportarZip(notas, areas, urlImagen = null) {
   const zip = new window.JSZip();
   const usados = new Set();
   for (const n of notas) {
@@ -203,7 +206,18 @@ export async function exportarZip(notas, areas) {
     let nombre = base + '.md', i = 2;
     while (usados.has(nombre.toLowerCase())) nombre = `${base} (${i++}).md`;
     usados.add(nombre.toLowerCase());
-    zip.file(nombre, notaAMarkdown(n, areas), { date: new Date(n.actualizadoEn || Date.now()) });
+    let md = notaAMarkdown(n, areas);
+    if (urlImagen) {
+      for (const id of new Set([...md.matchAll(/\(img:([\w-]+)\)/g)].map(m => m[1]))) {
+        const url = await urlImagen(n, id);
+        if (!url) continue;
+        const ext = ((url.match(/^data:image\/(\w+)/) || [])[1] || 'jpg').replace('jpeg', 'jpg');
+        const archivo = /^\d+$/.test(id) ? `${n.id.slice(0, 8)}-${id}` : id;
+        zip.file(`imagenes/${archivo}.${ext}`, url.slice(url.indexOf(',') + 1), { base64: true });
+        md = md.split(`(img:${id})`).join(`(../imagenes/${archivo}.${ext})`);
+      }
+    }
+    zip.file(nombre, md, { date: new Date(n.actualizadoEn || Date.now()) });
   }
   return zip.generateAsync({ type: 'blob' });
 }

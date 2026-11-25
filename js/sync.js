@@ -99,23 +99,23 @@ export async function sincronizar() {
   sincronizando = true;
   setEstado('sincronizando');
   try {
-    // 1) Bajar cambios desde la nube
-    let cursor = (await db.idb.metaGet('cursor:' + s.user.id)) || '1970-01-01T00:00:00Z';
-    // Pequeño solapamiento de 60 s para no perder cambios que se confirmaron casi al mismo tiempo
-    let desde = new Date(new Date(cursor).getTime() - 60000).toISOString();
+    // 1) Bajar cambios desde la nube. Las imágenes van aparte, de a pocas, porque pesan.
     let bajados = 0;
-    for (;;) {
-      const { data, error } = await c.from('registros')
-        .select('id,tipo,data,actualizado_en,eliminado,server_ts')
-        .gt('server_ts', desde)
-        .order('server_ts', { ascending: true })
-        .limit(1000);
-      if (error) throw traducir(error);
-      bajados += await db.aplicarRemotos(data);
-      if (data.length) { cursor = data[data.length - 1].server_ts; desde = cursor; }
-      if (data.length < 1000) break;
+    for (const grupo of [{ clave: 'cursor:', img: false, limite: 1000 }, { clave: 'cursor-img:', img: true, limite: 20 }]) {
+      let cursor = (await db.idb.metaGet(grupo.clave + s.user.id)) || '1970-01-01T00:00:00Z';
+      // Pequeño solapamiento de 60 s para no perder cambios que se confirmaron casi al mismo tiempo
+      let desde = new Date(new Date(cursor).getTime() - 60000).toISOString();
+      for (;;) {
+        let q = c.from('registros').select('id,tipo,data,actualizado_en,eliminado,server_ts').gt('server_ts', desde);
+        q = grupo.img ? q.eq('tipo', 'imagenes') : q.neq('tipo', 'imagenes');
+        const { data, error } = await q.order('server_ts', { ascending: true }).limit(grupo.limite);
+        if (error) throw traducir(error);
+        bajados += await db.aplicarRemotos(data);
+        if (data.length) { cursor = data[data.length - 1].server_ts; desde = cursor; }
+        if (data.length < grupo.limite) break;
+      }
+      await db.idb.metaSet(grupo.clave + s.user.id, cursor);
     }
-    await db.idb.metaSet('cursor:' + s.user.id, cursor);
     await db.deduplicarAreas();
 
     // 2) Subir pendientes, por tipo: si Supabase aún no acepta un tipo nuevo, los demás siguen
@@ -124,8 +124,10 @@ export async function sincronizar() {
     const rechazados = [];
     for (const tipo of db.TIPOS) {
       const delTipo = pend.filter(p => p.tipo === tipo);
-      for (let i = 0; i < delTipo.length; i += LOTE) {
-        const lote = delTipo.slice(i, i + LOTE);
+      const tam = db.PESADOS.has(tipo) ? 4 : LOTE;
+      for (let i = 0; i < delTipo.length; i += tam) {
+        let lote = delTipo.slice(i, i + tam);
+        if (db.PESADOS.has(tipo)) lote = (await Promise.all(lote.map(async p => ({ obj: { ...(await db.obtenerCompleto(tipo, p.obj.id)), ...p.obj } })))).filter(p => p.obj.dataUrl || p.obj.eliminado);
         const filas = lote.map(({ obj }) => {
           const { id, actualizadoEn, eliminado, _dirty, ...data } = obj;
           return { id, user_id: s.user.id, tipo, data: { ...data }, actualizado_en: actualizadoEn, eliminado: !!eliminado };

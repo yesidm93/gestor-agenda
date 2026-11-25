@@ -32,5 +32,6 @@ export const I = {
   izq: svg('<path d="m15 5-7 7 7 7"/>'),
   der: svg('<path d="m9 5 7 7-7 7"/>'),
   copiar: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>', 'width="16" height="16"'),
+  imagen: svg('<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m4 17 5-5 4 4 2.5-2.5L20 18"/>'),
   sol: svg('<circle cx="12" cy="12" r="4"/>'),
 };

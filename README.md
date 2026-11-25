@@ -12,7 +12,7 @@ PWA para organizar el día: **tareas con recordatorios, hábitos, notas y finanz
 | **Pagos** | Una tarea puede tener *Valor a pagar*: al marcarla hecha pregunta cuánto pagaste y lo registra como gasto. Si es mensual, pasa sola al mes siguiente con su aviso |
 | **Finanzas** | Saldo inicial (cuánto tienes hoy) y **Disponible** acumulado: saldo + ingresos − gastos. Gastos e ingresos por mes con categorías y comparación. **Deudas** que debo y que me deben, con abonos. **Ahorros** con valor actual, meta opcional y aportes o retiros. CSV del mes para Excel |
 | **Hábitos** | Días de la semana, racha, % de cumplimiento en 30 días, mapa de las últimas 5 semanas |
-| **Notas** | Cuadernos (= áreas), Markdown con vista previa, `#etiquetas`, búsqueda, fijar, plantilla de apunte de clase, casillas `- [ ]` que se convierten en tareas |
+| **Notas** | Cuadernos (= categorías), Markdown con vista previa, **imágenes** (cámara, galería, pegar o arrastrar; se comprimen a ~100–250 KB), `#etiquetas`, búsqueda, fijar, plantilla de apunte de clase, casillas `- [ ]` que se convierten en tareas |
 | **Importar** | Varios `.md` / `.txt` a la vez o un `.zip` (con imágenes), vista previa, detección de duplicados, cuadernos según la carpeta |
 | **Compartir** | En Android, la app aparece en el menú *Compartir*: textos y archivos `.md` llegan directo |
 | **Exportar** | Notas en Markdown (.zip, una carpeta por cuaderno) y respaldo completo (.json) |

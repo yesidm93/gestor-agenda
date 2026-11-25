@@ -1,9 +1,13 @@
 // Almacenamiento local (IndexedDB) + estado en memoria
 // Cada registro lleva: id, creadoEn, actualizadoEn (ms), eliminado, _dirty (pendiente de subir)
 
-export const TIPOS = ['areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas', 'ahorros'];
+export const TIPOS = ['areas', 'tareas', 'habitos', 'notas', 'movimientos', 'deudas', 'ahorros', 'imagenes'];
 const DB_NAME = 'gestor-agenda';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
+
+// Tipos pesados: en memoria solo se guardan los metadatos; el contenido (dataUrl) vive en IndexedDB
+export const PESADOS = new Set(['imagenes']);
+const soloMeta = o => { const { dataUrl, ...m } = o; return m; };
 
 // La misma función de actualización la usa el service worker (sw.js). Si cambias una, cambia la otra.
 export function upgradeDB(db) {
@@ -41,6 +45,7 @@ function req(store, modo, fn) {
 
 export const idb = {
   getAll: s => req(s, 'readonly', st => st.getAll()),
+  get: (s, k) => req(s, 'readonly', st => st.get(k)),
   put: (s, v) => req(s, 'readwrite', st => st.put(v)),
   putMany: (s, arr) => req(s, 'readwrite', st => { arr.forEach(v => st.put(v)); }),
   clear: s => req(s, 'readwrite', st => st.clear()),
@@ -65,7 +70,7 @@ export async function cargar() {
   for (const t of TIPOS) {
     const arr = await idb.getAll(t);
     state[t].clear();
-    arr.forEach(o => state[t].set(o.id, o));
+    arr.forEach(o => state[t].set(o.id, PESADOS.has(t) ? soloMeta(o) : o));
   }
 }
 
@@ -79,20 +84,32 @@ export function obtener(tipo, id) {
   return o && !o.eliminado ? o : null;
 }
 
+/** Registro completo desde IndexedDB (para tipos pesados, incluye el contenido) */
+export async function obtenerCompleto(tipo, id) {
+  return PESADOS.has(tipo) ? idb.get(tipo, id) : state[tipo].get(id) || null;
+}
+
+/** Si el objeto de un tipo pesado llega sin contenido, se completa con lo guardado */
+async function completar(tipo, o) {
+  if (!PESADOS.has(tipo) || 'dataUrl' in o) return o;
+  const previo = await idb.get(tipo, o.id);
+  return { ...(previo || {}), ...o };
+}
+
 /** Guarda un registro creado o modificado en el dispositivo */
 export async function guardar(tipo, obj, { silencioso = false } = {}) {
   const ahora = Date.now();
-  const o = { ...obj, creadoEn: obj.creadoEn || ahora, actualizadoEn: Math.max(ahora, (obj.actualizadoEn || 0) + 1), _dirty: true };
-  state[tipo].set(o.id, o);
+  const o = await completar(tipo, { ...obj, creadoEn: obj.creadoEn || ahora, actualizadoEn: Math.max(ahora, (obj.actualizadoEn || 0) + 1), _dirty: true });
+  state[tipo].set(o.id, PESADOS.has(tipo) ? soloMeta(o) : o);
   await idb.put(tipo, o);
   emitir({ tipo, id: o.id, origen: 'local', silencioso });
-  return o;
+  return state[tipo].get(o.id);
 }
 
 export async function guardarVarios(tipo, objs) {
   const ahora = Date.now();
-  const arr = objs.map((obj, i) => ({ ...obj, creadoEn: obj.creadoEn || ahora, actualizadoEn: ahora + i, _dirty: true }));
-  arr.forEach(o => state[tipo].set(o.id, o));
+  const arr = await Promise.all(objs.map((obj, i) => completar(tipo, { ...obj, creadoEn: obj.creadoEn || ahora, actualizadoEn: ahora + i, _dirty: true })));
+  arr.forEach(o => state[tipo].set(o.id, PESADOS.has(tipo) ? soloMeta(o) : o));
   await idb.putMany(tipo, arr);
   emitir({ tipo, origen: 'local' });
   return arr;
@@ -122,7 +139,12 @@ export async function marcarSubido(tipo, id, version) {
   const o = state[tipo].get(id);
   if (o && o.actualizadoEn === version && o._dirty) {
     o._dirty = false;
-    await idb.put(tipo, o);
+    if (PESADOS.has(tipo)) {
+      const completo = await idb.get(tipo, id);
+      if (completo) await idb.put(tipo, { ...completo, _dirty: false });
+    } else {
+      await idb.put(tipo, o);
+    }
   }
 }
 
@@ -134,7 +156,7 @@ export async function aplicarRemotos(filas) {
     const local = state[r.tipo].get(r.id);
     if (local && local.actualizadoEn >= Number(r.actualizado_en)) continue;
     const o = { ...r.data, id: r.id, actualizadoEn: Number(r.actualizado_en), eliminado: !!r.eliminado, _dirty: false };
-    state[r.tipo].set(o.id, o);
+    state[r.tipo].set(o.id, PESADOS.has(r.tipo) ? soloMeta(o) : o);
     (porTipo[r.tipo] ||= []).push(o);
   }
   let n = 0;
@@ -152,7 +174,7 @@ export function limpio(o) {
 export async function reemplazarTodo(datos) {
   for (const t of TIPOS) {
     const arr = (datos[t] || []).map(o => ({ ...o, actualizadoEn: Date.now(), _dirty: true }));
-    for (const o of arr) state[t].set(o.id, o);
+    for (const o of arr) state[t].set(o.id, PESADOS.has(t) ? soloMeta(o) : o);
     await idb.putMany(t, arr);
   }
   emitir({ origen: 'local' });

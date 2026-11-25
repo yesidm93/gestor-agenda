@@ -4,6 +4,7 @@ import * as sync from './sync.js';
 import * as imp from './importer.js';
 import * as fin from './finanzas.js';
 import * as avisos from './avisos.js';
+import * as imgs from './imagenes.js';
 import { I } from './icons.js';
 import {
   uid, hoy, addDays, fechaAmigable, fechaLarga, horaAmigable, haceCuanto, esc, debounce, norm,
@@ -1090,18 +1091,21 @@ function pintarListaNotas() {
   const notas = notasFiltradas();
   cont.innerHTML = notas.length ? notas.map(n => {
     const a = area(n.areaId);
-    return `<li><a class="nota-item${n.id === ui.notaId ? ' activa' : ''}" href="#/notas/${n.id}" aria-current="${n.id === ui.notaId}">
+    const foto = imgs.idsEnTexto(n.contenido, n)[0];
+    return `<li><a class="nota-item${n.id === ui.notaId ? ' activa' : ''}${foto ? ' con-foto' : ''}" href="#/notas/${n.id}" aria-current="${n.id === ui.notaId}">
+      ${foto ? `<img class="nota-thumb" data-img="${foto}" alt="">` : ''}
       <span class="nota-item-titulo">${n.fijada ? `<span class="pin" title="Fijada">${I.fijar}</span>` : ''}${esc(n.titulo || 'Sin título')}</span>
       <span class="nota-item-resumen">${esc(resumenTexto(n.contenido)) || '<em>Vacía</em>'}</span>
       <span class="nota-item-meta">${a ? `<span><i class="punto" style="--c:${a.color}"></i>${esc(a.nombre)}</span>` : ''}<span>${fechaAmigable(ymdLocal(n.actualizadoEn))}</span></span>
     </a></li>`;
   }).join('') : `<li class="vacio">${todas.length ? 'Ninguna nota coincide con la búsqueda.' : 'Aún no tienes notas. Crea una o pulsa Importar para traer las de tu celular.'}</li>`;
+  imgs.hidratar(cont);
 }
 
 const ymdLocal = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-function renderMarkdown(md) {
-  const html = window.marked.parse(md || '', { gfm: true, breaks: true });
+function renderMarkdown(md, nota = null) {
+  const html = window.marked.parse(imgs.prepararMarkdown(md, nota || (ui.notaId && db.obtener('notas', ui.notaId))), { gfm: true, breaks: true });
   return window.DOMPurify.sanitize(html, { ADD_ATTR: ['target'] });
 }
 
@@ -1131,6 +1135,7 @@ function pintarEditorNota() {
     </div>
     <textarea id="nota-titulo" class="nota-titulo" rows="1" placeholder="Título" aria-label="Título de la nota" data-input="nota">${esc(n.titulo)}</textarea>
     <div class="editor-herramientas" role="toolbar" aria-label="Formato">
+      <button class="btn-mini ancho resaltado-suave" data-accion="adjuntar-imagen" title="Agregar foto o imagen">${I.imagen}Imagen</button>
       <button class="btn-mini" data-accion="md" data-md="titulo" title="Subtítulo">T</button>
       <button class="btn-mini" data-accion="md" data-md="negrita" title="Negrita"><b>N</b></button>
       <button class="btn-mini" data-accion="md" data-md="lista" title="Lista">•</button>
@@ -1138,15 +1143,113 @@ function pintarEditorNota() {
       <button class="btn-mini ancho" data-accion="plantilla-clase" title="Insertar plantilla de apunte de clase">${I.plantilla}Plantilla de clase</button>
       ${pendientes ? `<button class="btn-mini ancho resaltado" data-accion="pendientes-a-tareas">${I.casilla}Crear ${pendientes} tarea${pendientes > 1 ? 's' : ''}</button>` : ''}
     </div>
+    <div class="galeria-nota" id="galeria-nota"></div>
     <div class="editor-cuerpo${ui.vistaPrevia ? ' previa' : ''}">
       <textarea id="nota-contenido" data-id="${n.id}" class="nota-contenido" placeholder="Escribe aquí. Usa # para títulos, - [ ] para pendientes y #etiquetas para encontrar la nota después." aria-label="Contenido de la nota" data-input="nota">${esc(n.contenido || '')}</textarea>
-      <article class="nota-render" id="nota-render">${renderMarkdown(n.contenido)}</article>
+      <article class="nota-render" id="nota-render">${renderMarkdown(n.contenido, n)}</article>
     </div>
     <footer class="editor-pie">
       ${n.etiquetas?.length ? n.etiquetas.map(t => `<button class="etiqueta" data-accion="etiqueta" data-valor="${esc(t)}">#${esc(t)}</button>`).join('') : ''}
       <span class="separador"></span><small id="estado-guardado">Guardada ${haceCuanto(n.actualizadoEn)}</small>
     </footer>`;
   activarCasillas();
+  imgs.hidratar($('#nota-render'));
+  pintarGaleria(n.contenido);
+}
+
+// ---------------------------------------------------------------------
+//  Imágenes en las notas
+// ---------------------------------------------------------------------
+let galeriaActual = '';
+function pintarGaleria(contenido, forzar = false) {
+  const g = $('#galeria-nota');
+  if (!g) return;
+  const ids = [...new Set(imgs.idsEnTexto(contenido, ui.notaId && db.obtener('notas', ui.notaId)))];
+  const clave = ids.join(',');
+  if (!forzar && clave === galeriaActual && g.childElementCount === ids.length) return;
+  galeriaActual = clave;
+  g.innerHTML = ids.map(id => `<figure>
+    <button class="galeria-ver" data-accion="ver-imagen" data-valor="${id}" aria-label="Ver imagen"><img data-img="${id}" alt=""></button>
+    <button class="galeria-quitar" data-accion="quitar-imagen" data-valor="${id}" aria-label="Quitar imagen">${I.cerrar}</button>
+  </figure>`).join('');
+  imgs.hidratar(g);
+}
+
+function elegirImagenes() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.multiple = true;
+  inp.onchange = () => inp.files.length && adjuntarImagenes([...inp.files]);
+  inp.click();
+}
+
+/** Comprime, guarda y escribe ![](img:ID) donde estaba el cursor */
+async function adjuntarImagenes(files) {
+  const n = ui.notaId && db.obtener('notas', ui.notaId);
+  const fotos = files.filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(f.name || ''));
+  if (!n || !fotos.length) return;
+  await guardarNotaYa();
+  toast(fotos.length > 1 ? `Agregando ${fotos.length} imágenes…` : 'Agregando imagen…');
+  const marcas = [];
+  const mapa = { ...(db.obtener('notas', n.id)?.imagenes || {}) };
+  for (const f of fotos) {
+    try {
+      const id = await imgs.guardarImagen(f, n.id, f.name || '');
+      const alias = imgs.siguienteAlias({ imagenes: mapa });
+      mapa[alias] = id;
+      marcas.push(`![foto ${alias}](img:${alias})`);
+    } catch (e) { console.error(e); toast(`No se pudo leer ${f.name || 'la imagen'}. Prueba con una foto JPG o PNG.`); }
+  }
+  if (!marcas.length) return;
+  await db.guardar('notas', { ...db.obtener('notas', n.id), imagenes: mapa }, { silencioso: true });
+  const ta = $('#nota-contenido');
+  const v = ta.value;
+  let pos = ui.vistaPrevia ? v.length : Number(ta.dataset.pos ?? v.length);
+  if (pos > v.length) pos = v.length;
+  const antes = v.slice(0, pos), despues = v.slice(pos);
+  const bloque = (antes && !antes.endsWith('\n') ? '\n' : '') + marcas.join('\n') + '\n' + (despues && !despues.startsWith('\n') ? '\n' : '');
+  ta.value = antes + bloque + despues;
+  ta.dataset.pos = String((antes + bloque).length);
+  await guardarNotaYa();
+  pintarGaleria(ta.value, true);
+  toast(marcas.length > 1 ? `${marcas.length} imágenes agregadas` : 'Imagen agregada');
+}
+
+async function quitarImagen(id) {
+  const n = db.obtener('notas', ui.notaId);
+  const ta = $('#nota-contenido');
+  if (!n || !ta) return;
+  const previo = ta.value;
+  const refs = [id, ...Object.entries(n.imagenes || {}).filter(([, v]) => v === id).map(([k]) => k)];
+  for (const ref of refs) ta.value = ta.value.replace(new RegExp(`\\n?!\\[[^\\]]*\\]\\(img:${ref}\\)\\n?`, 'g'), '\n');
+  ta.value = ta.value.replace(/\n{3,}/g, '\n\n');
+  await guardarNotaYa();
+  await db.eliminar('imagenes', id);
+  imgs.olvidar(id);
+  pintarGaleria(ta.value, true);
+  toast('Imagen quitada', { texto: 'Deshacer', fn: async () => {
+    await db.restaurar('imagenes', id);
+    const t = $('#nota-contenido');
+    if (t && ui.notaId === n.id) { t.value = previo; await guardarNotaYa(); pintarGaleria(previo, true); }
+    else await db.guardar('notas', { ...db.obtener('notas', n.id), contenido: previo });
+  } });
+}
+
+async function abrirVisor(id) {
+  const url = await imgs.urlImagen(id);
+  if (!url) return toast('Esta imagen aún no se ha sincronizado en este dispositivo.');
+  const d = $('#dlg');
+  d.classList.add('visor-dlg');
+  abrirDialogo(`
+    <div class="visor">
+      <img src="${url}" alt="">
+      <div class="visor-barra">
+        <button class="btn" data-accion="descargar-imagen" data-valor="${id}">${I.exportar}Descargar</button>
+        <button class="btn btn-primario" data-accion="cerrar-dialogo">Cerrar</button>
+      </div>
+    </div>`);
+  d.addEventListener('close', () => d.classList.remove('visor-dlg'), { once: true });
 }
 
 const RE_CASILLA = /^(\s*[-*+]\s+)\[( |x|X)\]\s+(.*)$/gm;
@@ -1185,7 +1288,8 @@ async function guardarNotaYa(id = ui.notaId) {
   await db.guardar('notas', { ...n, titulo, contenido, etiquetas: extraerEtiquetas(contenido) }, { silencioso: true });
   if (ui.notaId !== id) return;
   const r = $('#nota-render');
-  if (r) { r.innerHTML = renderMarkdown(contenido); activarCasillas(); }
+  if (r) { r.innerHTML = renderMarkdown(contenido); activarCasillas(); imgs.hidratar(r); }
+  pintarGaleria(contenido);
   const e = $('#estado-guardado');
   if (e) e.textContent = 'Guardada';
 }
@@ -1307,7 +1411,7 @@ async function confirmarImport(form) {
   const crear = [];
   const notas = elegidas.map(c => {
     let areaId = destino === 'auto' ? null : destino || null;
-    if (destino === 'auto' && c.cuaderno) {
+    if (destino === 'auto' && c.cuaderno && norm(c.cuaderno) !== 'sin cuaderno') {
       const k = norm(c.cuaderno);
       if (!porNombre.has(k)) {
         const a = { id: uid(), nombre: c.cuaderno, color: COLORES[(areasOrdenadas().length + crear.length) % COLORES.length], orden: 99 };
@@ -1319,6 +1423,18 @@ async function confirmarImport(form) {
   });
   cerrarDialogo();
   if (crear.length) await db.guardarVarios('areas', crear);
+  for (const n of notas) {
+    const incrustadas = [...n.contenido.matchAll(/!\[([^\]]*)\]\((data:image\/[^)\s]+)\)/g)];
+    for (const m of incrustadas) {
+      try {
+        const id = await imgs.guardarImagen(m[2], n.id);
+        n.imagenes = { ...(n.imagenes || {}) };
+        const alias = imgs.siguienteAlias(n);
+        n.imagenes[alias] = id;
+        n.contenido = n.contenido.replace(m[0], `![${m[1] || 'foto ' + alias}](img:${alias})`);
+      } catch { /* se deja como estaba */ }
+    }
+  }
   await db.guardarVarios('notas', notas);
   ui.cuaderno = 'todos';
   toast(`${notas.length} nota${notas.length > 1 ? 's importadas' : ' importada'}${crear.length ? ` y ${crear.length} cuaderno${crear.length > 1 ? 's' : ''} nuevo${crear.length > 1 ? 's' : ''}` : ''}`);
@@ -1708,6 +1824,8 @@ function cerrarDialogo() {
 async function alHacerClic(ev) {
   const el = ev.target.closest('[data-accion]');
   if (ev.target.id === 'dlg') { cerrarDialogo(); return; } // clic en el fondo
+  const imVista = ev.target.closest('.nota-render img[data-img]');
+  if (imVista) return abrirVisor(imVista.dataset.img);
   if (!el) return;
   const { accion, id, valor } = el.dataset;
   switch (accion) {
@@ -1749,7 +1867,9 @@ async function alHacerClic(ev) {
     case 'exportar-nota': {
       await guardarNotaYa();
       const n = db.obtener('notas', ui.notaId);
-      return descargar(`${nombreArchivo(n.titulo)}.md`, new Blob([imp.notaAMarkdown(n, areasOrdenadas())], { type: 'text/markdown' }));
+      let md = imp.notaAMarkdown(n, areasOrdenadas());
+      for (const m of [...md.matchAll(imgs.RE_IMG)]) { const u = await imgs.urlImagen(imgs.resolver(n, m[2])); if (u) md = md.split(`(img:${m[2]})`).join(`(${u})`); }
+      return descargar(`${nombreArchivo(n.titulo)}.md`, new Blob([md], { type: 'text/markdown' }));
     }
     case 'eliminar-nota': {
       const nid = ui.notaId;
@@ -1758,6 +1878,15 @@ async function alHacerClic(ev) {
       return toast('Nota eliminada', { texto: 'Deshacer', fn: () => db.restaurar('notas', nid).then(() => ir('notas', nid)) });
     }
     case 'md': return insertarMd(el.dataset.md);
+    case 'adjuntar-imagen': return elegirImagenes();
+    case 'ver-imagen': return abrirVisor(valor);
+    case 'quitar-imagen': return quitarImagen(valor);
+    case 'descargar-imagen': {
+      const r = await db.obtenerCompleto('imagenes', valor);
+      if (!r?.dataUrl) return;
+      const ext = (r.dataUrl.match(/^data:image\/(\w+)/) || [])[1] || 'jpg';
+      return descargar(`imagen-${valor.slice(0, 8)}.${ext === 'jpeg' ? 'jpg' : ext}`, await (await fetch(r.dataUrl)).blob());
+    }
     case 'plantilla-clase': {
       const ta = $('#nota-contenido');
       if (!ta) return;
@@ -1808,7 +1937,7 @@ async function alHacerClic(ev) {
     case 'exportar-notas': {
       const notas = db.lista('notas');
       if (!notas.length) return toast('No hay notas para exportar.');
-      descargar(`${imp.nombreExport('notas')}.zip`, await imp.exportarZip(notas, areasOrdenadas()));
+      descargar(`${imp.nombreExport('notas')}.zip`, await imp.exportarZip(notas, areasOrdenadas(), (n, ref) => imgs.urlImagen(imgs.resolver(n, ref))));
       return toast(`${notas.length} notas exportadas`);
     }
     case 'exportar-json': return exportarJSON();
@@ -2067,6 +2196,28 @@ document.addEventListener('submit', async ev => {
       botones.forEach(b => { b.disabled = false; });
     }
   }
+});
+
+document.addEventListener('focusout', ev => { if (ev.target.id === 'nota-contenido') ev.target.dataset.pos = String(ev.target.selectionStart); });
+document.addEventListener('paste', ev => {
+  if (ev.target.id !== 'nota-contenido') return;
+  const files = [...(ev.clipboardData?.files || [])].filter(f => /^image\//.test(f.type));
+  if (!files.length) return;
+  ev.preventDefault();
+  ev.target.dataset.pos = String(ev.target.selectionStart);
+  adjuntarImagenes(files);
+});
+document.addEventListener('dragover', ev => { if (ev.target.closest?.('#editor-nota') && [...(ev.dataTransfer?.items || [])].some(i => i.kind === 'file')) { ev.preventDefault(); $('#editor-nota').classList.add('soltando'); } });
+document.addEventListener('dragleave', ev => { if (ev.target.id === 'editor-nota' || !ev.relatedTarget) $('#editor-nota')?.classList.remove('soltando'); });
+document.addEventListener('drop', ev => {
+  if (!ev.target.closest?.('#editor-nota')) return;
+  $('#editor-nota').classList.remove('soltando');
+  const files = [...(ev.dataTransfer?.files || [])].filter(f => /^image\//.test(f.type));
+  if (!files.length) return;
+  ev.preventDefault();
+  const ta = $('#nota-contenido');
+  if (ta && ev.target === ta) ta.dataset.pos = String(ta.selectionStart);
+  adjuntarImagenes(files);
 });
 
 document.addEventListener('input', ev => {

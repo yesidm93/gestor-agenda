@@ -802,3 +802,33 @@ dialog:has(.formulario.ancho) { width: min(720px, calc(100vw - 32px)); }
 /* Chips de categorías (celular) */
 .chips-cat { margin-top: 6px; }
 .chips-cat .filtro { height: 30px; font-weight: 700; }
+
+/* ---------------------------------------------------------------------
+   Imágenes en las notas
+   --------------------------------------------------------------------- */
+.btn-mini.resaltado-suave { color: var(--tinta); border-color: var(--tinta); }
+.galeria-nota { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 0 2px; }
+.galeria-nota:empty { display: none; }
+.galeria-nota figure { position: relative; margin: 0; }
+.galeria-ver { display: block; width: 76px; height: 76px; padding: 0; border: 1px solid var(--linea); border-radius: var(--r-m); overflow: hidden; background: var(--suave); cursor: zoom-in; }
+.galeria-ver img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.galeria-quitar { position: absolute; top: -7px; right: -7px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--papel); background: var(--tinta); color: var(--papel); display: grid; place-items: center; padding: 0; cursor: pointer; }
+.galeria-quitar svg { width: 12px; height: 12px; }
+.nota-render img { display: block; max-width: 100%; max-height: 70vh; height: auto; margin: 10px 0; border-radius: var(--r-m); cursor: zoom-in; background: var(--suave); }
+img.img-pendiente { min-width: 120px; min-height: 90px; border: 1px dashed var(--linea); }
+.nota-item.con-foto { grid-template-columns: minmax(0, 1fr) 52px; column-gap: 12px; }
+.nota-item.con-foto > :not(.nota-thumb) { grid-column: 1; }
+.nota-thumb { grid-column: 2; grid-row: 1 / span 3; align-self: center; width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: var(--suave); }
+#editor-nota.soltando { outline: 2px dashed var(--enfoque); outline-offset: -8px; border-radius: var(--r-l); }
+
+/* Visor de imagen a pantalla completa */
+dialog.visor-dlg { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; background: rgba(10, 14, 22, 0.96); padding: 0; animation: none; }
+dialog.visor-dlg::backdrop { background: rgba(10, 14, 22, 0.9); }
+.visor { height: 100%; display: grid; grid-template-rows: 1fr auto; }
+.visor img { width: 100%; height: 100%; object-fit: contain; min-height: 0; }
+.visor-barra { display: flex; justify-content: center; gap: 10px; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
+@media (max-width: 899px) {
+  .galeria-ver { width: 64px; height: 64px; }
+  .nota-item.con-foto { grid-template-columns: minmax(0, 1fr) 46px; }
+  .nota-thumb { width: 46px; height: 46px; }
+}
