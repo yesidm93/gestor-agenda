@@ -5,6 +5,7 @@ import * as imp from './importer.js';
 import * as fin from './finanzas.js';
 import * as avisos from './avisos.js';
 import * as imgs from './imagenes.js';
+import { iniciarArrastre, arrastrando } from './tablero.js';
 import { I } from './icons.js';
 import {
   uid, hoy, addDays, fechaAmigable, fechaLarga, horaAmigable, haceCuanto, esc, debounce, norm,
@@ -12,7 +13,7 @@ import {
 } from './util.js';
 import {
   PRIORIDADES, RECURRENCIAS, COLORES, proximaFecha, ordenarTareas, esVencida,
-  tocaHoy, hecho, racha, cumplimiento, semanaActual, parsearRapido,
+  parsearRapido,
   calcularAvisarEn, avisoActivo, REPETIR_AVISO, DIAS_ANTES, parsearListaTareas,
 } from './logic.js';
 
@@ -23,7 +24,6 @@ const escritorio = () => matchMedia('(min-width: 900px)').matches;
 const VISTAS = {
   hoy: { titulo: 'Hoy', icono: I.hoy },
   tareas: { titulo: 'Tareas', icono: I.tareas },
-  habitos: { titulo: 'Hábitos', icono: I.habitos },
   notas: { titulo: 'Notas', icono: I.notas },
   finanzas: { titulo: 'Finanzas', icono: I.finanzas },
   ajustes: { titulo: 'Ajustes', icono: I.ajustes },
@@ -43,6 +43,9 @@ const ui = {
   fpestana: 'mes',
   verSaldadas: false,
   desplegadas: new Set(),
+  seleccion: null,
+  filtroTablero: 'todas',
+  visibles: [],
 };
 
 let eventoInstalar = null;
@@ -78,12 +81,13 @@ async function iniciar() {
       const ta = $('#nota-contenido');
       if (d.origen === 'remoto' && ui.notaId && document.activeElement !== ta && document.activeElement !== $('#nota-titulo')) pintarEditorNota();
       if (ui.notaId && !db.obtener('notas', ui.notaId)) { ui.notaId = null; pintarEditorNota(); }
-    } else if (!$('dialog[open]')) {
+    } else if (!$('dialog[open]') && !arrastrando() && !document.activeElement?.closest?.('#form-plantilla, #form-supabase, #form-login')) {
       render();
     }
     pintarLateral();
   });
 
+  iniciarArrastre({ alSoltar: soltarTarjeta });
   sync.onEstado(pintarEstadoSync);
   sync.iniciarAutoSync();
   registrarSW();
@@ -121,6 +125,7 @@ function leerRuta() {
     });
   }
   const seguirEnNotas = ui.vista === 'notas' && nueva === 'notas' && $('#editor-nota');
+  if (nueva !== ui.vista) ui.seleccion = null;
   ui.vista = nueva;
   if (ui.vista === 'notas') ui.notaId = id || null;
   if (seguirEnNotas) { pintarListaNotas(); pintarEditorNota(); actualizarFab(); return; }
@@ -130,8 +135,9 @@ function leerRuta() {
 
 function actualizarFab() {
   const fab = $('#fab');
-  fab.hidden = ui.vista === 'ajustes' || (ui.vista === 'notas' && !!ui.notaId && !escritorio());
-  fab.setAttribute('aria-label', { hoy: 'Nueva tarea', tareas: 'Nueva tarea', habitos: 'Nuevo hábito', notas: 'Nueva nota', finanzas: ui.fpestana === 'deudas' ? 'Nueva deuda' : ui.fpestana === 'ahorros' ? 'Nuevo ahorro' : 'Registrar gasto o ingreso' }[ui.vista] || 'Agregar');
+  pintarBarraSel();
+  fab.hidden = ui.vista === 'ajustes' || (ui.vista === 'tareas' && !!ui.seleccion) || (ui.vista === 'notas' && !!ui.notaId && !escritorio());
+  fab.setAttribute('aria-label', { hoy: 'Nueva tarea', tareas: 'Nueva tarea', notas: 'Nueva nota', finanzas: ui.fpestana === 'deudas' ? 'Nueva deuda' : ui.fpestana === 'ahorros' ? 'Nuevo ahorro' : 'Registrar gasto o ingreso' }[ui.vista] || 'Agregar');
 }
 
 function ir(vista, id) {
@@ -165,7 +171,7 @@ function pintarLateral() {
 function pintarEstadoSync(e) {
   pintarIndicadores(e);
   const cambiaSesion = ['apagado', 'sin-sesion'].includes(e.fase) !== ['apagado', 'sin-sesion'].includes(pintarEstadoSync.ultimaFase);
-  if (ui.vista === 'ajustes' && cambiaSesion && !$('dialog[open]') && !document.activeElement?.closest?.('#form-supabase, #form-login')) {
+  if (ui.vista === 'ajustes' && cambiaSesion && !$('dialog[open]') && !document.activeElement?.closest?.('#form-supabase, #form-login, #form-plantilla')) {
     pintarEstadoSync.ultimaFase = e.fase;
     render();
   }
@@ -196,7 +202,7 @@ function render() {
   document.body.dataset.vista = ui.vista;
   $('#titulo-movil').textContent = ui.vista === 'hoy' ? fechaLarga(hoy()) : VISTAS[ui.vista].titulo;
   actualizarFab();
-  ({ hoy: vistaHoy, tareas: vistaTareas, habitos: vistaHabitos, notas: vistaNotas, finanzas: vistaFinanzas, ajustes: vistaAjustes })[ui.vista]();
+  ({ hoy: vistaHoy, tareas: vistaTareas, notas: vistaNotas, finanzas: vistaFinanzas, ajustes: vistaAjustes })[ui.vista]();
   pintarLateral();
 }
 
@@ -212,14 +218,17 @@ async function agregarCategorias(nombres) {
   return nuevas.length;
 }
 
+/** Notas del usuario (sin la plantilla de clase, que se guarda como nota oculta) */
+const notasReales = () => db.lista('notas').filter(n => !n.plantilla);
+
 const areasOrdenadas = () => db.lista('areas').sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.nombre.localeCompare(b.nombre));
 const area = id => (id ? db.obtener('areas', id) : null);
 
 // ---------------------------------------------------------------------
 //  Elementos de tarea
 // ---------------------------------------------------------------------
-function htmlTarea(t, { mostrarFecha = true } = {}) {
-  const a = area(t.areaId);
+function metaTarea(t, { mostrarFecha = true, mostrarArea = true } = {}) {
+  const a = mostrarArea && area(t.areaId);
   const meta = [];
   if (a) meta.push(`<span class="meta-area"><i class="punto" style="--c:${a.color}"></i>${esc(a.nombre)}</span>`);
   if (mostrarFecha && t.fecha) meta.push(`<span class="${esVencida(t) ? 'meta-vencida' : ''}">${fechaAmigable(t.fecha)}</span>`);
@@ -228,11 +237,25 @@ function htmlTarea(t, { mostrarFecha = true } = {}) {
   if (t.aviso?.activo && t.avisarEn && !t.completada) meta.push(`<span class="${avisoActivo(t) ? 'meta-aviso' : ''}">${I.campanaMini}${textoAviso(t)}</span>`);
   if (t.pago?.monto) meta.push(`<span>${I.moneda}${fin.pesos(t.pago.monto)}</span>`);
   if (t.notas) meta.push('<span class="meta-notas">con notas</span>');
+  return meta;
+}
+
+/** Botón de casilla: marca hecha, o selecciona cuando está activo el modo selección */
+function htmlCheck(t) {
+  if (ui.seleccion) {
+    const sel = ui.seleccion.has(t.id);
+    return `<button class="check check-sel" data-accion="sel-tarea" data-id="${t.id}" role="checkbox" aria-checked="${sel}" aria-label="Seleccionar «${esc(t.titulo)}»"></button>`;
+  }
+  return `<button class="check" data-accion="alternar-tarea" data-id="${t.id}" role="checkbox" aria-checked="${!!t.completada}" aria-label="Marcar «${esc(t.titulo)}» como ${t.completada ? 'pendiente' : 'hecha'}"></button>`;
+}
+
+function htmlTarea(t, { mostrarFecha = true } = {}) {
+  const meta = metaTarea(t, { mostrarFecha });
   const subs = t.subtareas || [];
   const hechasSub = subs.filter(x => x.hecha).length;
   const abierta = ui.desplegadas.has(t.id);
-  return `<li class="tarea prio-${t.prioridad || 'media'}${t.completada ? ' hecha' : ''}${esVencida(t) ? ' vencida' : ''}${subs.length ? ' con-subs' : ''}" data-id="${t.id}">
-    <button class="check" data-accion="alternar-tarea" data-id="${t.id}" role="checkbox" aria-checked="${!!t.completada}" aria-label="Marcar «${esc(t.titulo)}» como ${t.completada ? 'pendiente' : 'hecha'}"></button>
+  return `<li class="tarea prio-${t.prioridad || 'media'}${t.completada ? ' hecha' : ''}${esVencida(t) ? ' vencida' : ''}${subs.length ? ' con-subs' : ''}${ui.seleccion?.has(t.id) ? ' seleccionada' : ''}" data-id="${t.id}">
+    ${htmlCheck(t)}
     <button class="tarea-cuerpo" data-accion="editar-tarea" data-id="${t.id}">
       <span class="tarea-titulo"><span class="marca">${esc(t.titulo)}</span></span>
       ${meta.length ? `<span class="tarea-meta">${meta.join('')}</span>` : ''}
@@ -299,10 +322,8 @@ function vistaHoy() {
   const deHoy = tareas.filter(t => !t.completada && t.fecha === h).sort(ordenarTareas);
   const hechasHoy = tareas.filter(t => t.completada && t.completadaEn && new Date(t.completadaEn).toDateString() === new Date().toDateString())
     .sort((a, b) => b.completadaEn - a.completadaEn);
-  const habitos = db.lista('habitos').filter(x => tocaHoy(x)).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const conAviso = tareas.filter(t => avisoActivo(t)).sort((a, b) => a.avisarEn - b.avisarEn);
   const deudasProx = db.lista('deudas').filter(d => fin.deudaVencida(d) || fin.venceProntoDeuda(d)).sort((a, b) => a.vence.localeCompare(b.vence));
-  const habHechos = habitos.filter(x => hecho(x, h)).length;
   const total = deHoy.length + hechasHoy.length;
   const hora = new Date().getHours();
   const saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
@@ -343,18 +364,12 @@ function vistaHoy() {
           <button class="btn btn-texto" data-accion="ver-hechas" aria-expanded="${ui.verHechasHoy}">${ui.verHechasHoy ? 'Ocultar' : 'Ver'} las ${hechasHoy.length} hechas hoy</button>
           ${ui.verHechasHoy ? listaTareas(hechasHoy, { mostrarFecha: false }) : ''}</section>` : ''}
       </div>
-      <aside class="hoy-habitos bloque">
-        <h2>Hábitos de hoy <span class="cuenta">${habHechos}/${habitos.length}</span></h2>
-        ${habitos.length ? `<ul class="chips-habitos">${habitos.map(x => `
-          <li><button class="chip-habito" data-accion="alternar-habito" data-id="${x.id}" data-fecha="${h}" aria-pressed="${hecho(x, h)}">
-            <span class="chip-check" aria-hidden="true"></span><span>${esc(x.nombre)}</span>${racha(x) > 1 ? `<small>${racha(x)} días</small>` : ''}
-          </button></li>`).join('')}</ul>`
-        : `<p class="vacio">Sin hábitos para hoy. <a href="#/habitos">Crear un hábito</a></p>`}
-        ${deudasProx.length ? `<h2 class="sub-aside">Pagos y cobros cercanos</h2>
+      ${deudasProx.length ? `<aside class="hoy-habitos bloque">
+        <h2>Pagos y cobros cercanos</h2>
           <ul class="mini-deudas">${deudasProx.map(d => `<li><button data-accion="abrir-deuda" data-id="${d.id}">
             <span><b>${d.sentido === 'debo' ? 'Pagar a' : 'Cobrar a'} ${esc(d.persona)}</b><small class="${fin.deudaVencida(d) ? 'meta-vencida' : ''}">${fin.deudaVencida(d) ? 'Venció ' : 'Vence '}${fechaAmigable(d.vence).toLowerCase()}</small></span>
-            <span class="${d.sentido === 'debo' ? 'monto-gasto' : 'monto-ingreso'}">${fin.pesos(fin.saldo(d))}</span></button></li>`).join('')}</ul>` : ''}
-      </aside>
+            <span class="${d.sentido === 'debo' ? 'monto-gasto' : 'monto-ingreso'}">${fin.pesos(fin.saldo(d))}</span></button></li>`).join('')}</ul>
+      </aside>` : ''}
     </div>`;
 }
 
@@ -363,11 +378,16 @@ function vistaHoy() {
 // =====================================================================
 const FILTROS = { proximas: 'Próximas', hoy: 'Hoy', todas: 'Todas', sinfecha: 'Sin fecha', hechas: 'Hechas' };
 
+const modoTareas = () => localStorage.getItem('ga-tareas-modo') || 'tablero';
+
 function vistaTareas() {
   const h = hoy();
+  const modo = modoTareas();
+  document.body.classList.toggle('modo-tablero', modo === 'tablero');
+  const scrollTablero = $('#tablero')?.scrollLeft || 0;
   let tareas = db.lista('tareas');
-  if (ui.areaId) tareas = tareas.filter(t => t.areaId === ui.areaId);
-  const f = ui.filtro;
+  if (ui.areaId && modo !== 'tablero') tareas = tareas.filter(t => t.areaId === ui.areaId);
+  const f = modo === 'tablero' ? ui.filtroTablero : ui.filtro;
   if (f === 'hechas') tareas = tareas.filter(t => t.completada).sort((a, b) => (b.completadaEn || 0) - (a.completadaEn || 0));
   else {
     tareas = tareas.filter(t => !t.completada);
@@ -395,25 +415,171 @@ function vistaTareas() {
     hechas: 'Aún no has completado tareas.',
   };
 
+  ui.visibles = tareas.map(t => t.id);
+  const tablero = modo === 'tablero';
   $('#vista').innerHTML = `
     <header class="vista-cabecera">
-      <h1>${a ? `<i class="punto grande" style="--c:${a.color}"></i>${esc(a.nombre)}` : 'Tareas'}</h1>
-      ${a ? `<button class="btn btn-texto solo-escritorio" data-accion="quitar-area">Ver todas las categorías</button>` : ''}
-      <div class="acciones"><button class="btn" data-accion="pegar-tareas">${I.importar}Pegar tareas</button></div>
+      <h1>${a && !tablero ? `<i class="punto grande" style="--c:${a.color}"></i>${esc(a.nombre)}` : 'Tareas'}</h1>
+      ${a && !tablero ? `<button class="btn btn-texto solo-escritorio" data-accion="quitar-area">Ver todas las categorías</button>` : ''}
+      <div class="acciones">
+        <div class="segmentado modo-vista" role="radiogroup" aria-label="Vista de tareas">
+          <label><input type="radio" name="modo-tareas" value="tablero" data-cambio="modo-tareas" ${tablero ? 'checked' : ''}><span>Tablero</span></label>
+          <label><input type="radio" name="modo-tareas" value="lista" data-cambio="modo-tareas" ${tablero ? '' : 'checked'}><span>Lista</span></label>
+        </div>
+        <button class="btn${ui.seleccion ? ' btn-primario' : ''}" data-accion="seleccionar" aria-pressed="${!!ui.seleccion}">${I.casilla}<span>${ui.seleccion ? 'Listo' : 'Seleccionar'}</span></button>
+        <button class="btn" data-accion="pegar-tareas" aria-label="Pegar tareas">${I.importar}<span class="solo-escritorio">Pegar tareas</span></button>
+      </div>
     </header>
-    ${capturaRapida(a ? `Agregar tarea en ${a.nombre}` : 'Agregar tarea', 'tareas')}
+    ${tablero ? '' : capturaRapida(a ? `Agregar tarea en ${a.nombre}` : 'Agregar tarea', 'tareas')}
     <div class="filtros" role="tablist" aria-label="Filtrar tareas">
       ${Object.entries(FILTROS).map(([k, v]) => `<button role="tab" class="filtro" data-accion="filtro" data-valor="${k}" aria-selected="${f === k}">${v}</button>`).join('')}
     </div>
-    <div class="filtros chips-cat solo-movil" role="group" aria-label="Filtrar por categoría">
+    ${tablero ? htmlTablero(tareas, f) : `<div class="filtros chips-cat solo-movil" role="group" aria-label="Filtrar por categoría">
       <button class="filtro" data-accion="quitar-area" aria-pressed="${!ui.areaId}">Todas</button>
       ${areasOrdenadas().map(x => `<button class="filtro" data-accion="filtrar-area" data-id="${x.id}" aria-pressed="${x.id === ui.areaId}"><i class="punto" style="--c:${x.color}"></i>${esc(x.nombre)}</button>`).join('')}
     </div>
     ${tareas.length ? [...grupos].map(([k, arr]) => `
       <section class="bloque ${k === 'Atrasadas' ? 'bloque-vencidas' : ''}"><h2>${k} <span class="cuenta">${arr.length}</span></h2>
         ${listaTareas(arr, { mostrarFecha: k === 'Atrasadas' || f === 'hechas' })}</section>`).join('')
-      : `<p class="vacio grande">${vacios[f]}</p>`}`;
-  $('.chips-cat [aria-pressed="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+      : `<p class="vacio grande">${vacios[f]}</p>`}`}`;
+  if (tablero) { const tb = $('#tablero'); if (tb) tb.scrollLeft = scrollTablero; }
+  else $('.chips-cat [aria-pressed="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+
+// ---------------------------------------------------------------------
+//  Tablero (columnas por categoría)
+// ---------------------------------------------------------------------
+const claveOrden = t => t.orden ?? t.creadoEn ?? 0;
+
+function htmlTarjeta(t) {
+  const meta = metaTarea(t, { mostrarArea: false });
+  const subs = t.subtareas || [];
+  const hechasSub = subs.filter(x => x.hecha).length;
+  if (subs.length) meta.push(`<span class="${hechasSub === subs.length ? 'meta-subs-ok' : ''}">${I.casilla}${hechasSub}/${subs.length}</span>`);
+  return `<li class="tarjeta prio-${t.prioridad || 'media'}${t.completada ? ' hecha' : ''}${esVencida(t) ? ' vencida' : ''}${ui.seleccion?.has(t.id) ? ' seleccionada' : ''}" data-id="${t.id}">
+    ${htmlCheck(t)}
+    <button class="tarjeta-cuerpo" data-accion="editar-tarea" data-id="${t.id}">
+      <span class="tarjeta-titulo"><span class="marca">${esc(t.titulo)}</span></span>
+      ${meta.length ? `<span class="tarea-meta">${meta.join('')}</span>` : ''}
+    </button>
+  </li>`;
+}
+
+function htmlTablero(tareas, f) {
+  const sinCat = t => !t.areaId || !area(t.areaId);
+  const cols = areasOrdenadas().map(a => ({ id: a.id, nombre: a.nombre, color: a.color, arr: tareas.filter(t => t.areaId === a.id) }));
+  const sueltas = tareas.filter(sinCat);
+  if (sueltas.length) cols.unshift({ id: '', nombre: 'Sin categoría', color: '#9AA3B5', arr: sueltas });
+  const ayuda = escritorio() ? 'Arrastra las tarjetas para moverlas entre columnas.' : 'Mantén presionada una tarjeta para moverla a otra columna.';
+  return `
+    <p class="ayuda ayuda-tablero">${ayuda}</p>
+    <div class="tablero" id="tablero">
+      ${cols.map(c => {
+        const arr = c.arr.slice().sort((x, y) => claveOrden(x) - claveOrden(y));
+        return `<section class="columna" data-area="${c.id}" style="--c:${c.color}" aria-label="${esc(c.nombre)}">
+          <header class="columna-cab">
+            <i class="punto" style="--c:${c.color}"></i><h2>${esc(c.nombre)}</h2><span class="cuenta">${arr.length}</span>
+            ${c.id ? `<button class="btn-icono" data-accion="editar-area" data-id="${c.id}" aria-label="Editar categoría ${esc(c.nombre)}">${I.lapiz}</button>` : ''}
+          </header>
+          <ul class="tarjetas">${arr.map(htmlTarjeta).join('')}</ul>
+          ${f === 'hechas' || ui.seleccion ? '' : `<form class="tarjeta-nueva" data-form="tarjeta-nueva" data-area="${c.id}">
+            <input name="texto" placeholder="+ Agregar tarea" autocomplete="off" enterkeyhint="done" aria-label="Agregar tarea en ${esc(c.nombre)}">
+          </form>`}
+        </section>`;
+      }).join('')}
+      <section class="columna columna-nueva"><button class="btn" data-accion="nueva-area">${I.mas}Nueva categoría</button></section>
+    </div>`;
+}
+
+/** Al soltar una tarjeta: cambia de categoría y queda entre sus vecinas */
+async function soltarTarjeta(id, areaId, antId, sigId) {
+  const t = db.obtener('tareas', id);
+  if (!t) return;
+  const ant = antId && db.obtener('tareas', antId), sig = sigId && db.obtener('tareas', sigId);
+  let orden;
+  if (ant && sig) orden = (claveOrden(ant) + claveOrden(sig)) / 2;
+  else if (ant) orden = claveOrden(ant) + 1000;
+  else if (sig) orden = claveOrden(sig) - 1000;
+  else orden = Date.now();
+  const nuevaArea = areaId || null;
+  const cambio = (t.areaId || null) !== nuevaArea;
+  await db.guardar('tareas', { ...t, areaId: nuevaArea, orden });
+  if (cambio) toast(`Movida a ${nuevaArea ? area(nuevaArea)?.nombre : 'Sin categoría'}`, { texto: 'Deshacer', fn: () => db.guardar('tareas', { ...db.obtener('tareas', id), areaId: t.areaId || null, orden: t.orden }) });
+}
+
+// ---------------------------------------------------------------------
+//  Selección múltiple
+// ---------------------------------------------------------------------
+function pintarBarraSel() {
+  const b = $('#barra-seleccion');
+  if (!b) return;
+  const activo = !!ui.seleccion && ui.vista === 'tareas';
+  document.body.classList.toggle('modo-sel', activo);
+  b.hidden = !activo;
+  if (!activo) return;
+  const n = ui.seleccion.size;
+  b.innerHTML = `
+    <span class="sel-cuenta"><b>${n}</b> ${n === 1 ? 'seleccionada' : 'seleccionadas'}</span>
+    <button class="btn btn-texto" data-accion="sel-todas">${n && n === (ui.visibles || []).length ? 'Ninguna' : 'Todas'}</button>
+    <span class="separador"></span>
+    <button class="btn" data-accion="sel-mover" ${n ? '' : 'disabled'}>Mover</button>
+    <button class="btn" data-accion="sel-hechas" ${n ? '' : 'disabled'}>${I.casilla}<span>Hechas</span></button>
+    <button class="btn btn-peligro-solido" data-accion="sel-eliminar" ${n ? '' : 'disabled'}>${I.basura}<span>Eliminar</span></button>`;
+}
+
+function salirSeleccion() { ui.seleccion = null; pintarBarraSel(); }
+
+async function accionSeleccion(accion, valor) {
+  const ids = [...(ui.seleccion || [])];
+  const tareas = ids.map(id => db.obtener('tareas', id)).filter(Boolean);
+  if (accion === 'sel-todas') {
+    const todas = ui.visibles || [];
+    ui.seleccion = new Set(ui.seleccion.size === todas.length ? [] : todas);
+    return render();
+  }
+  if (!tareas.length) return;
+  if (accion === 'sel-eliminar') {
+    if (!confirm(`¿Eliminar ${tareas.length} ${tareas.length === 1 ? 'tarea' : 'tareas'}? Podrás deshacerlo justo después.`)) return;
+    await db.guardarVarios('tareas', tareas.map(t => ({ ...t, eliminado: true })));
+    ui.seleccion = new Set();
+    render();
+    return toast(`${tareas.length} ${tareas.length === 1 ? 'tarea eliminada' : 'tareas eliminadas'}`, {
+      texto: 'Deshacer', fn: () => db.guardarVarios('tareas', tareas.map(t => ({ ...t, eliminado: false }))),
+    });
+  }
+  if (accion === 'sel-hechas') {
+    const cambios = tareas.filter(t => !t.completada).map(t => {
+      if (t.recurrencia) {
+        const n = { ...t, fecha: proximaFecha(t.fecha, t.recurrencia), vecesHecha: (t.vecesHecha || 0) + 1, subtareas: (t.subtareas || []).map(x => ({ ...x, hecha: false })) };
+        n.avisarEn = calcularAvisarEn(n);
+        return n;
+      }
+      return { ...t, completada: true, completadaEn: Date.now(), avisarEn: null };
+    });
+    await db.guardarVarios('tareas', cambios);
+    cambios.forEach(t => avisos.cerrarNotificacion(t.id));
+    ui.seleccion = new Set();
+    render();
+    return toast(`${cambios.length} marcadas como hechas`, { texto: 'Deshacer', fn: () => db.guardarVarios('tareas', tareas) });
+  }
+  if (accion === 'sel-mover') {
+    return abrirDialogo(`
+      <div class="formulario">
+        <header class="dlg-cabecera"><h2>Mover ${tareas.length} ${tareas.length === 1 ? 'tarea' : 'tareas'} a…</h2>
+          <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
+        <div class="opciones-mover">
+          ${areasOrdenadas().map(a => `<button class="btn" data-accion="sel-mover-a" data-valor="${a.id}"><i class="punto" style="--c:${a.color}"></i>${esc(a.nombre)}</button>`).join('')}
+          <button class="btn" data-accion="sel-mover-a" data-valor="">Sin categoría</button>
+        </div>
+      </div>`);
+  }
+  if (accion === 'sel-mover-a') {
+    cerrarDialogo();
+    await db.guardarVarios('tareas', tareas.map(t => ({ ...t, areaId: valor || null })));
+    ui.seleccion = new Set();
+    render();
+    return toast(`${tareas.length} movidas a ${valor ? area(valor)?.nombre : 'Sin categoría'}`, { texto: 'Deshacer', fn: () => db.guardarVarios('tareas', tareas) });
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -970,72 +1136,6 @@ function abrirAbono(id) {
   setTimeout(() => { const i = $('#dlg input[name=monto]'); i?.focus(); i?.select(); }, 50);
 }
 
-// =====================================================================
-//  Vista: HÁBITOS
-// =====================================================================
-function vistaHabitos() {
-  const habitos = db.lista('habitos').sort((a, b) => a.nombre.localeCompare(b.nombre));
-  const semana = semanaActual();
-  const h = hoy();
-  $('#vista').innerHTML = `
-    <header class="vista-cabecera"><h1>Hábitos</h1>
-      <button class="btn btn-primario solo-escritorio" data-accion="nuevo-habito">${I.mas}Nuevo hábito</button></header>
-    ${habitos.length ? `<ul class="lista-habitos">${habitos.map(x => {
-      const r = racha(x);
-      return `<li class="habito">
-        <div class="habito-info">
-          <button class="habito-nombre" data-accion="editar-habito" data-id="${x.id}">${esc(x.nombre)}</button>
-          <span class="habito-dato">${r ? `Racha de ${r} ${r === 1 ? 'día' : 'días'}` : 'Sin racha aún'}</span>
-          <span class="habito-dato">${cumplimiento(x)}% en 30 días</span>
-          <span class="habito-dato">${!x.dias?.length || x.dias.length === 7 ? 'Todos los días' : x.dias.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DIAS_NOMBRE[d].slice(0, 3)).join(', ')}</span>
-        </div>
-        <div class="semana" role="group" aria-label="Semana de ${esc(x.nombre)}">
-          ${semana.map(f => {
-            const dia = parseYmd(f).getDay();
-            const toca = tocaHoy(x, f);
-            const futuro = f > h;
-            return `<button class="dia${f === h ? ' es-hoy' : ''}${toca ? '' : ' no-toca'}" data-accion="alternar-habito" data-id="${x.id}" data-fecha="${f}" aria-pressed="${hecho(x, f)}" ${futuro ? 'disabled' : ''} aria-label="${DIAS_NOMBRE[dia]} ${f}">${DIAS_CORTOS[dia]}</button>`;
-          }).join('')}
-        </div>
-        <div class="mapa" aria-hidden="true">${Array.from({ length: 35 }, (_, i) => {
-          const f = addDays(h, i - 34);
-          return `<i class="${hecho(x, f) ? 'si' : tocaHoy(x, f) ? 'no' : 'na'}" title="${f}"></i>`;
-        }).join('')}</div>
-      </li>`;
-    }).join('')}</ul>`
-    : `<div class="vacio grande"><p>Un hábito es algo que quieres hacer con regularidad: leer 20 minutos, hacer ejercicio, revisar el correo de la universidad.</p>
-       <button class="btn btn-primario" data-accion="nuevo-habito">Crear el primer hábito</button></div>`}`;
-}
-
-function abrirHabito(id) {
-  const x = id ? db.obtener('habitos', id) : { id: uid(), nombre: '', dias: [], registro: {} };
-  const dias = x.dias?.length ? x.dias : [0, 1, 2, 3, 4, 5, 6];
-  abrirDialogo(`
-    <form method="dialog" class="formulario" data-form="habito" data-id="${x.id}">
-      <header class="dlg-cabecera"><h2>${id ? 'Editar hábito' : 'Nuevo hábito'}</h2>
-        <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
-      <label class="campo"><span>Nombre</span><input name="nombre" required value="${esc(x.nombre)}" placeholder="Leer 20 minutos" autocomplete="off"></label>
-      <fieldset class="campo dias-semana"><legend>Qué días</legend>
-        ${[1, 2, 3, 4, 5, 6, 0].map(d => `<label><input type="checkbox" name="dias" value="${d}" ${dias.includes(d) ? 'checked' : ''}><span title="${DIAS_NOMBRE[d]}">${DIAS_CORTOS[d]}</span></label>`).join('')}
-      </fieldset>
-      <footer class="dlg-pie">
-        ${id ? `<button type="button" class="btn btn-peligro" data-accion="eliminar-habito" data-id="${x.id}">${I.basura}Eliminar</button>` : ''}
-        <span class="separador"></span>
-        <button type="button" class="btn" data-accion="cerrar-dialogo">Cancelar</button>
-        <button type="submit" class="btn btn-primario">${id ? 'Guardar cambios' : 'Crear hábito'}</button>
-      </footer>
-    </form>`);
-  if (!id) setTimeout(() => $('#dlg input[name=nombre]')?.focus(), 50);
-}
-
-async function alternarHabito(id, fecha) {
-  const x = db.obtener('habitos', id);
-  if (!x) return;
-  const registro = { ...(x.registro || {}) };
-  if (registro[fecha]) delete registro[fecha];
-  else registro[fecha] = true;
-  await db.guardar('habitos', { ...x, registro });
-}
 
 // =====================================================================
 //  Vista: NOTAS
@@ -1062,7 +1162,7 @@ function vistaNotas() {
 }
 
 function notasFiltradas() {
-  let notas = db.lista('notas');
+  let notas = notasReales();
   if (ui.cuaderno === 'ninguno') notas = notas.filter(n => !n.areaId || !area(n.areaId));
   else if (ui.cuaderno !== 'todos') notas = notas.filter(n => n.areaId === ui.cuaderno);
   if (ui.etiqueta) notas = notas.filter(n => n.etiquetas?.includes(ui.etiqueta));
@@ -1081,7 +1181,7 @@ function resumenTexto(md, n = 140) {
 function pintarListaNotas() {
   const cont = $('#lista-notas');
   if (!cont) return;
-  const todas = db.lista('notas');
+  const todas = notasReales();
   const areas = areasOrdenadas().filter(a => todas.some(n => n.areaId === a.id) || ui.cuaderno === a.id);
   $('#filtros-cuaderno').innerHTML = `
     <button class="filtro" data-accion="cuaderno" data-valor="todos" aria-pressed="${ui.cuaderno === 'todos'}">Todas <span class="cuenta">${todas.length}</span></button>
@@ -1297,16 +1397,43 @@ async function guardarNotaYa(id = ui.notaId) {
 async function nuevaNota({ clase = false } = {}) {
   const areaId = ui.cuaderno !== 'todos' && ui.cuaderno !== 'ninguno' ? ui.cuaderno : null;
   const n = { id: uid(), titulo: '', contenido: clase ? plantillaClase(areaId) : '', areaId, etiquetas: [], fijada: false };
-  if (clase) { const a = area(areaId); n.titulo = `${a ? a.nombre + ' · ' : ''}Clase del ${fechaAmigable(hoy()) === 'Hoy' ? new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long' }).format(new Date()) : hoy()}`; }
+  if (clase) n.titulo = rellenarPlantilla(plantillaActual().titulo, areaId, { esTitulo: true }) || 'Apunte de clase';
   await db.guardar('notas', n);
   ui.vistaPrevia = false;
   ir('notas', n.id);
   setTimeout(() => (clase ? $('#nota-contenido') : $('#nota-titulo'))?.focus(), 60);
 }
 
-function plantillaClase(areaId) {
+const PLANTILLA_ORIGINAL = {
+  titulo: '{curso} · Clase del {fecha_corta}',
+  contenido: '**Curso:** {curso}\n**Fecha:** {fecha}\n**Tema:** \n\n## Lo que vimos\n- \n\n## Dudas de los estudiantes\n- \n\n## Pendientes para la próxima clase\n- [ ] \n',
+};
+
+/** La plantilla vive en una nota oculta (plantilla: 'clase') para que se sincronice */
+const notaPlantilla = () => db.lista('notas').filter(n => n.plantilla === 'clase').sort((a, b) => b.actualizadoEn - a.actualizadoEn)[0] || null;
+
+function plantillaActual() {
+  const n = notaPlantilla();
+  return n ? { titulo: n.titulo, contenido: n.contenido } : PLANTILLA_ORIGINAL;
+}
+
+function rellenarPlantilla(texto, areaId, { esTitulo = false } = {}) {
   const a = area(areaId);
-  return `**Curso:** ${a ? a.nombre : ''}\n**Fecha:** ${new Intl.DateTimeFormat('es-CO', { dateStyle: 'long' }).format(new Date())}\n**Tema:** \n\n## Lo que vimos\n- \n\n## Dudas de los estudiantes\n- \n\n## Pendientes para la próxima clase\n- [ ] \n`;
+  const ahora = new Date();
+  const valores = {
+    curso: a ? a.nombre : '',
+    fecha: new Intl.DateTimeFormat('es-CO', { dateStyle: 'long' }).format(ahora),
+    fecha_corta: new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long' }).format(ahora),
+    dia: DIAS_NOMBRE[ahora.getDay()],
+    hora: horaAmigable(`${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`),
+  };
+  const r = String(texto || '').replace(/\{(curso|fecha_corta|fecha|dia|hora)\}/g, (m, k) => valores[k]);
+  // En el título, si {curso} quedó vacío no deben sobrar separadores al inicio o al final
+  return esTitulo ? r.replace(/^[\s·•|:,–—-]+/, '').replace(/[\s·•|:,–—-]+$/, '').trim() : r.replace(/\s+$/, '');
+}
+
+function plantillaClase(areaId) {
+  return rellenarPlantilla(plantillaActual().contenido, areaId) + '\n';
 }
 
 function insertarMd(tipo) {
@@ -1368,7 +1495,7 @@ async function previsualizarImport(files) {
 
 function mostrarPrevia(candidatas, avisos = []) {
   if (!candidatas.length) { toast(avisos[0] || 'No se encontraron notas en esos archivos.'); return; }
-  const huellas = new Set(db.lista('notas').map(imp.huellaNota));
+  const huellas = new Set(notasReales().map(imp.huellaNota));
   candidatas.forEach((c, i) => { c.i = i; c.duplicada = huellas.has(imp.huellaNota(c)); });
   const areas = areasOrdenadas();
   const detectados = [...new Set(candidatas.map(c => c.cuaderno).filter(Boolean))];
@@ -1623,7 +1750,7 @@ async function vistaAjustes() {
   const e = sync.getEstado();
   const tema = localStorage.getItem('ga-tema') || 'sistema';
   const instalada = matchMedia('(display-mode: standalone)').matches;
-  const totales = { tareas: db.lista('tareas').length, notas: db.lista('notas').length, habitos: db.lista('habitos').length };
+  const totales = { tareas: db.lista('tareas').length, notas: notasReales().length };
 
   let nube;
   if (!cfg) {
@@ -1676,6 +1803,19 @@ async function vistaAjustes() {
         <button class="btn" data-accion="nueva-area">${I.mas}Nueva categoría</button>
       </section>
 
+      <section class="panel"><h2>Plantilla de apuntes de clase</h2>
+        <p class="ayuda">Es lo que se escribe al tocar <b>Plantilla de clase</b> o <b>Apunte de clase</b> en Notas.</p>
+        <form class="formulario" data-form="plantilla" id="form-plantilla">
+          <label class="campo"><span>Título de la nota</span><input name="titulo" value="${esc(plantillaActual().titulo)}" autocomplete="off"></label>
+          <label class="campo"><span>Contenido</span><textarea name="contenido" rows="11" class="plantilla-texto">${esc(plantillaActual().contenido)}</textarea></label>
+          <p class="ayuda">Puedes usar: <code>{curso}</code> (el cuaderno de la nota), <code>{fecha}</code>, <code>{fecha_corta}</code>, <code>{dia}</code> y <code>{hora}</code>. También Markdown: <code>##</code> títulos, <code>-</code> viñetas, <code>- [ ]</code> pendientes.</p>
+          <div class="fila-botones">
+            <button class="btn btn-primario" type="submit">Guardar plantilla</button>
+            ${notaPlantilla() ? '<button class="btn btn-texto" type="button" data-accion="plantilla-original">Volver a la original</button>' : ''}
+          </div>
+        </form>
+      </section>
+
       <section class="panel"><h2>Importar notas y tareas</h2>
         <p class="ayuda">Notas exportadas como texto (.txt) o Markdown (.md), o un .zip con varias. Antes de guardar verás la lista para elegir cuáles traer.</p>
         <div class="fila-botones">
@@ -1686,7 +1826,7 @@ async function vistaAjustes() {
       </section>
 
       <section class="panel"><h2>Exportar y restaurar</h2>
-        <p class="ayuda">Tienes ${totales.tareas} tareas, ${totales.notas} notas y ${totales.habitos} hábitos en este dispositivo.</p>
+        <p class="ayuda">Tienes ${totales.tareas} tareas y ${totales.notas} notas en este dispositivo.</p>
         <div class="fila-botones">
           <button class="btn" data-accion="exportar-notas">${I.exportar}Notas en Markdown (.zip)</button>
           <button class="btn" data-accion="exportar-json">${I.exportar}Respaldo completo (.json)</button>
@@ -1709,7 +1849,7 @@ async function vistaAjustes() {
 
       <section class="panel solo-escritorio"><h2>Atajos de teclado</h2>
         <dl class="atajos">
-          <div><dt><kbd>N</kbd></dt><dd>Nueva tarea, nota o hábito según la sección</dd></div>
+          <div><dt><kbd>N</kbd></dt><dd>Nueva tarea o nota según la sección</dd></div>
           <div><dt><kbd>/</kbd></dt><dd>Buscar en notas</dd></div>
           <div><dt><kbd>1</kbd>–<kbd>5</kbd></dt><dd>Cambiar de sección</dd></div>
           <div><dt><kbd>Ctrl</kbd> <kbd>S</kbd></dt><dd>Guardar la nota al instante</dd></div>
@@ -1830,11 +1970,16 @@ async function alHacerClic(ev) {
   const { accion, id, valor } = el.dataset;
   switch (accion) {
     case 'alternar-tarea': return alternarTarea(id, el);
+    case 'seleccionar': ui.seleccion = ui.seleccion ? null : new Set(); return render();
+    case 'sel-tarea': { ui.seleccion.has(id) ? ui.seleccion.delete(id) : ui.seleccion.add(id); return render(); }
+    case 'sel-todas': case 'sel-eliminar': case 'sel-hechas': case 'sel-mover': case 'sel-mover-a': return accionSeleccion(accion, valor);
     case 'desplegar-subs': { if (ui.desplegadas.has(id)) ui.desplegadas.delete(id); else ui.desplegadas.add(id); return render(); }
     case 'alternar-sub': return alternarSub(id, valor);
     case 'agregar-sub-dlg': return agregarSubDlg();
     case 'quitar-sub-dlg': el.closest('.sub-dlg')?.remove(); return;
-    case 'editar-tarea': return abrirTarea(id);
+    case 'editar-tarea':
+      if (ui.seleccion && ui.vista === 'tareas') { ui.seleccion.has(id) ? ui.seleccion.delete(id) : ui.seleccion.add(id); return render(); }
+      return abrirTarea(id);
     case 'eliminar-tarea': {
       cerrarDialogo();
       await db.eliminar('tareas', id);
@@ -1846,17 +1991,9 @@ async function alHacerClic(ev) {
       return toast(`${v.length} tarea${v.length > 1 ? 's pasadas' : ' pasada'} a hoy`);
     }
     case 'ver-hechas': ui.verHechasHoy = !ui.verHechasHoy; return render();
-    case 'filtro': ui.filtro = valor; return render();
+    case 'filtro': if (ui.vista === 'tareas' && modoTareas() === 'tablero') ui.filtroTablero = valor; else ui.filtro = valor; return render();
     case 'filtrar-area': ui.areaId = id; if (!['hechas', 'sinfecha'].includes(ui.filtro)) ui.filtro = 'todas'; return ir('tareas');
     case 'quitar-area': ui.areaId = null; return render();
-    case 'alternar-habito': return alternarHabito(id, el.dataset.fecha);
-    case 'nuevo-habito': return abrirHabito();
-    case 'editar-habito': return abrirHabito(id);
-    case 'eliminar-habito': {
-      cerrarDialogo();
-      await db.eliminar('habitos', id);
-      return toast('Hábito eliminado', { texto: 'Deshacer', fn: () => db.restaurar('habitos', id) });
-    }
     case 'nueva-nota': return nuevaNota();
     case 'nueva-nota-clase': return nuevaNota({ clase: true });
     case 'cuaderno': ui.cuaderno = valor; return pintarListaNotas();
@@ -1919,11 +2056,16 @@ async function alHacerClic(ev) {
     case 'pegar': return abrirPegar();
     case 'marcar-todas': $$('#dlg input[name=sel]').forEach(c => { c.checked = valor === '1'; }); return actualizarBotonImport();
     case 'nueva-area': return abrirArea();
+    case 'plantilla-original': {
+      const n = notaPlantilla();
+      if (n && confirm('¿Volver a la plantilla original? Se perderán tus cambios.')) { await db.eliminar('notas', n.id); toast('Plantilla original restaurada'); render(); }
+      return;
+    }
     case 'agregar-sugerida': await agregarCategorias([valor]); return toast(`Categoría «${valor}» creada`);
     case 'editar-area': return abrirArea(id);
     case 'eliminar-area': {
       const a = db.obtener('areas', id);
-      const n = db.lista('tareas').filter(t => t.areaId === id).length + db.lista('notas').filter(t => t.areaId === id).length;
+      const n = db.lista('tareas').filter(t => t.areaId === id).length + notasReales().filter(t => t.areaId === id).length;
       if (n && !confirm(`«${a.nombre}» tiene ${n} tareas o notas. Quedarán sin categoría, no se borran. ¿Eliminar la categoría?`)) return;
       cerrarDialogo();
       if (ui.areaId === id) ui.areaId = null;
@@ -1935,7 +2077,7 @@ async function alHacerClic(ev) {
     case 'olvidar-supabase': sync.setConfig(null); return render();
     case 'instalar': if (eventoInstalar) { eventoInstalar.prompt(); await eventoInstalar.userChoice; eventoInstalar = null; render(); } return;
     case 'exportar-notas': {
-      const notas = db.lista('notas');
+      const notas = notasReales();
       if (!notas.length) return toast('No hay notas para exportar.');
       descargar(`${imp.nombreExport('notas')}.zip`, await imp.exportarZip(notas, areasOrdenadas(), (n, ref) => imgs.urlImagen(imgs.resolver(n, ref))));
       return toast(`${notas.length} notas exportadas`);
@@ -2035,6 +2177,18 @@ document.addEventListener('submit', async ev => {
   const tipo = f.dataset.form;
   if (!tipo) return;
   ev.preventDefault();
+  if (tipo === 'tarjeta-nueva') {
+    const texto = f.texto.value.trim();
+    if (!texto) return;
+    const p = parsearRapido(texto, areasOrdenadas());
+    const areaCol = f.dataset.area || null;
+    await db.guardar('tareas', {
+      id: uid(), titulo: p.titulo || texto, notas: '', prioridad: p.prioridad, hora: p.hora, recurrencia: '', completada: false,
+      areaId: p.areaId || areaCol, fecha: p.fecha || (p.hora ? hoy() : null), orden: Date.now(),
+    });
+    $(`.columna[data-area="${f.dataset.area}"] .tarjeta-nueva input`)?.focus();
+    return;
+  }
   if (tipo === 'sub-rapida') {
     const titulo = f.titulo.value.trim();
     const t = db.obtener('tareas', f.dataset.id);
@@ -2046,15 +2200,6 @@ document.addEventListener('submit', async ev => {
   }
   if (tipo === 'captura') { await agregarRapido(f); f.reset(); $('#captura')?.focus(); return; }
   if (tipo === 'tarea') return guardarTareaDesdeForm(f);
-  if (tipo === 'habito') {
-    const fd = new FormData(f);
-    const previo = db.obtener('habitos', f.dataset.id) || { id: f.dataset.id, registro: {} };
-    let dias = fd.getAll('dias').map(Number);
-    if (dias.length === 7 || !dias.length) dias = [];
-    cerrarDialogo();
-    await db.guardar('habitos', { ...previo, nombre: fd.get('nombre').trim(), dias });
-    return toast(previo.nombre ? 'Cambios guardados' : 'Hábito creado');
-  }
   if (tipo === 'area') {
     const fd = new FormData(f);
     const previa = db.obtener('areas', f.dataset.id) || { id: f.dataset.id, orden: areasOrdenadas().length };
@@ -2090,6 +2235,12 @@ document.addEventListener('submit', async ev => {
     await db.guardar('movimientos', m);
     if (fin.mesDe(m.fecha) !== ui.fmes) ui.fmes = fin.mesDe(m.fecha);
     return toast(previo.clase ? 'Cambios guardados' : `${m.clase === 'gasto' ? 'Gasto' : 'Ingreso'} de ${fin.pesos(monto)} registrado`);
+  }
+  if (tipo === 'plantilla') {
+    const fd = new FormData(f);
+    const previa = notaPlantilla() || { id: uid(), plantilla: 'clase', etiquetas: [], areaId: null };
+    await db.guardar('notas', { ...previa, titulo: fd.get('titulo').trim() || PLANTILLA_ORIGINAL.titulo, contenido: fd.get('contenido') });
+    return toast('Plantilla guardada');
   }
   if (tipo === 'saldo-base') {
     const fd = new FormData(f);
@@ -2236,6 +2387,7 @@ document.addEventListener('change', async ev => {
   const c = t.dataset.cambio;
   if (c === 'area-filtro') { ui.areaId = t.value || null; render(); }
   if (c === 'cuaderno-nota') { const n = db.obtener('notas', ui.notaId); await db.guardar('notas', { ...n, areaId: t.value || null }, { silencioso: true }); }
+  if (c === 'modo-tareas') { localStorage.setItem('ga-tareas-modo', t.value); render(); }
   if (c === 'tema') { localStorage.setItem('ga-tema', t.value); aplicarTema(t.value); }
   if (c === 'tipo-aporte') { const e = $('#txt-registrar'); if (e) e.textContent = t.value === 'agregar' ? 'Descontarlo del disponible (se registra como gasto «Ahorro»)' : 'Sumarlo al disponible (se registra como ingreso)'; }
   if (c === 'clase-mov') { const sel = $('#dlg select[name=categoria]'); if (sel) sel.innerHTML = opcionesCategorias(t.value); }
@@ -2244,6 +2396,7 @@ document.addEventListener('change', async ev => {
 $('#dlg').addEventListener('close', () => { if (ui.vista !== 'notas') render(); });
 
 function atajos(ev) {
+  if (ev.key === 'Escape' && ui.seleccion && !$('dialog[open]')) { ui.seleccion = null; render(); return; }
   if (ev.target.id === 'nueva-sub' && ev.key === 'Enter') { ev.preventDefault(); agregarSubDlg(); return; }
   if (ev.target.id === 'nota-titulo' && ev.key === 'Enter') { ev.preventDefault(); $('#nota-contenido')?.focus(); return; }
   const enCampo = ev.target.closest('input, textarea, select, [contenteditable]');
@@ -2253,7 +2406,7 @@ function atajos(ev) {
   }
   if (enCampo || ev.ctrlKey || ev.metaKey || ev.altKey || $('dialog[open]')) return;
   const k = ev.key;
-  if (/^[1-6]$/.test(k)) { ev.preventDefault(); return ir(Object.keys(VISTAS)[Number(k) - 1]); }
+  if (/^[1-5]$/.test(k)) { ev.preventDefault(); return ir(Object.keys(VISTAS)[Number(k) - 1]); }
   if (k === '/') { ev.preventDefault(); if (ui.vista !== 'notas') ir('notas'); setTimeout(() => $('#buscar-notas')?.focus(), 30); return; }
   if (k.toLowerCase() === 'n') { ev.preventDefault(); accionPrincipal(true); }
 }
@@ -2261,7 +2414,6 @@ function atajos(ev) {
 function accionPrincipal(teclado = false) {
   if (ui.vista === 'notas') return nuevaNota();
   if (ui.vista === 'finanzas') return ui.fpestana === 'deudas' ? abrirDeuda() : ui.fpestana === 'ahorros' ? abrirAhorro() : abrirMovimiento();
-  if (ui.vista === 'habitos') return abrirHabito();
   if (teclado && $('#captura')) return $('#captura').focus();
   return abrirTarea(null);
 }

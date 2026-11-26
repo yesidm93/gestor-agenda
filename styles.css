@@ -75,6 +75,7 @@ kbd { font: 700 var(--t-xs) var(--f-texto); border: 1px solid var(--linea); bord
    Estructura
    --------------------------------------------------------------------- */
 .app { min-height: 100dvh; }
+.vista { min-width: 0; }
 .vista {
   padding: 8px 16px calc(var(--barra) + 96px + env(safe-area-inset-bottom));
   max-width: 760px;
@@ -95,7 +96,7 @@ body[data-vista='hoy'] .cabecera-movil h1 { visibility: hidden; }
 
 .nav-inferior {
   position: fixed; inset: auto 0 0 0; z-index: 10;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(4, 1fr);
   height: calc(var(--barra) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--superficie);
@@ -121,7 +122,7 @@ body[data-vista='hoy'] .cabecera-movil h1 { visibility: hidden; }
 
 /* Escritorio: barra lateral fija y más espacio */
 @media (min-width: 900px) {
-  .app { display: grid; grid-template-columns: var(--lateral) 1fr; }
+  .app { display: grid; grid-template-columns: var(--lateral) minmax(0, 1fr); }
   .cabecera-movil, .nav-inferior, .fab, .solo-movil { display: none !important; }
   .vista { padding: 40px 48px 64px; max-width: 1080px; margin: 0; width: 100%; }
   .lateral {
@@ -832,3 +833,90 @@ dialog.visor-dlg::backdrop { background: rgba(10, 14, 22, 0.9); }
   .nota-item.con-foto { grid-template-columns: minmax(0, 1fr) 46px; }
   .nota-thumb { width: 46px; height: 46px; }
 }
+
+
+/* =====================================================================
+   TABLERO de tareas (columnas por categoría)
+   ===================================================================== */
+body.modo-tablero .vista { max-width: none; }
+.hoy-columnas:not(:has(> aside)) { grid-template-columns: minmax(0, 1fr); }
+.modo-vista span { padding: 6px 12px; }
+.ayuda-tablero { margin: 8px 0 0; font-size: var(--t-xs); }
+.tablero {
+  display: flex; align-items: flex-start; gap: 12px;
+  overflow-x: auto; padding: 10px 2px 28px;
+  scroll-snap-type: x proximity; overscroll-behavior-x: contain;
+}
+.columna {
+  flex: 0 0 288px; scroll-snap-align: start;
+  background: var(--suave); border-radius: var(--r-l); border-top: 3px solid var(--c);
+  padding: 6px 8px 8px;
+}
+.columna.destino { outline: 2px dashed var(--c); outline-offset: 2px; }
+.columna-cab { display: flex; align-items: center; gap: 8px; padding: 6px 4px 8px; }
+.columna-cab h2 { flex: 1; min-width: 0; font: 700 1rem var(--f-titulo); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.columna-cab .btn-icono { width: 30px; height: 30px; }
+.columna-cab .btn-icono svg { width: 16px; height: 16px; }
+.tarjetas { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; min-height: 6px; }
+.tarjeta {
+  display: flex; align-items: flex-start;
+  background: var(--superficie); border: 1px solid var(--linea); border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(27, 42, 74, 0.06);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  cursor: grab;
+}
+.tarjeta.prio-alta { border-left: 3px solid var(--vencido); }
+.tarjeta .check { width: 38px; height: 42px; }
+.tarjeta-cuerpo { flex: 1; min-width: 0; display: grid; gap: 3px; padding: 10px 10px 10px 0; border: 0; background: none; text-align: left; cursor: inherit; }
+.tarjeta-titulo { font-size: 0.98rem; overflow-wrap: anywhere; }
+.tarjeta.hecha .tarjeta-titulo { color: var(--grafito); }
+.tarjeta .tarea-meta svg { width: 13px; height: 13px; }
+.meta-subs-ok { color: var(--hecho); font-weight: 700; }
+.tarjeta.arrastrando { opacity: 0.35; }
+.tarjeta-fantasma { position: fixed; left: 0; top: 0; z-index: 100; margin: 0; list-style: none; pointer-events: none; opacity: 0.96; box-shadow: var(--sombra-flotante); }
+body.arrastrando-tarjeta, body.arrastrando-tarjeta * { cursor: grabbing !important; }
+.tarjeta-nueva input {
+  width: 100%; height: 38px; margin-top: 8px; padding: 0 10px;
+  border: 1px dashed transparent; border-radius: 9px; background: transparent; color: var(--tinta);
+}
+.tarjeta-nueva input::placeholder { color: var(--grafito); }
+.tarjeta-nueva input:hover { background: color-mix(in srgb, var(--superficie) 60%, transparent); }
+.tarjeta-nueva input:focus { outline: none; background: var(--superficie); border: 1px solid var(--enfoque); }
+.columna-nueva { background: none; border: 2px dashed var(--linea); display: grid; place-items: center; min-height: 84px; }
+
+/* Selección múltiple */
+.check-sel::before { border-radius: 50%; }
+.check-sel[aria-checked='true']::before {
+  background: var(--enfoque) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12.5 4 4 8-9'/%3E%3C/svg%3E") center/14px no-repeat;
+  border-color: var(--enfoque);
+}
+.tarjeta.seleccionada, .tarea.seleccionada { background: color-mix(in srgb, var(--enfoque) 10%, var(--superficie)); border-color: var(--enfoque); }
+body.modo-sel .tarjeta { cursor: pointer; }
+.barra-seleccion {
+  position: fixed; z-index: 12; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--barra) + 12px + env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 6px; width: max-content; max-width: calc(100vw - 16px);
+  padding: 8px 8px 8px 14px; border-radius: 14px;
+  background: var(--superficie); border: 1px solid var(--linea); box-shadow: var(--sombra-flotante);
+}
+.sel-cuenta { white-space: nowrap; font-size: 0.93rem; }
+.btn-peligro-solido { background: var(--vencido); border-color: var(--vencido); color: #fff; }
+.btn-peligro-solido:hover { border-color: var(--vencido); filter: brightness(1.08); }
+.opciones-mover { display: grid; gap: 8px; }
+.opciones-mover .btn { justify-content: flex-start; }
+.plantilla-texto { font-size: 0.93rem; line-height: 1.5; }
+@media (min-width: 900px) {
+  .barra-seleccion { bottom: 24px; left: calc(50% + var(--lateral) / 2); }
+}
+@media (max-width: 899px) {
+  .tablero { margin: 0 -14px; padding: 8px 14px 24px; gap: 10px; scroll-padding-left: 14px; }
+  .columna { flex-basis: min(84vw, 320px); }
+  body[data-vista='tareas'] .vista-cabecera .acciones { gap: 6px; }
+  body[data-vista='tareas'] .vista-cabecera .acciones .btn { padding: 0 10px; }
+}
+@media (max-width: 430px) {
+  .barra-seleccion .btn span { display: none; }
+  .barra-seleccion { gap: 4px; padding-left: 12px; }
+  body[data-vista='tareas'] [data-accion='seleccionar'] span { display: none; }
+}
+body.arrastrando-tarjeta .tablero { scroll-snap-type: none; }

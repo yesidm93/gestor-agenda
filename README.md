@@ -1,24 +1,23 @@
 # Gestor agenda
 
-PWA para organizar el día: **tareas con recordatorios, hábitos, notas y finanzas**. Funciona sin internet, se instala en el celular (Android) y en el computador (Chrome o Edge), y guarda una copia en **Supabase** para no perder nada si pierdes el teléfono.
+PWA para organizar el día: **tareas en tablero con recordatorios, notas con imágenes y finanzas**. Funciona sin internet, se instala en el celular (Android) y en el computador (Chrome o Edge), y guarda una copia en **Supabase** para no perder nada si pierdes el teléfono.
 
 ## Qué incluye
 
 | Sección | Qué hace |
 |---|---|
 | **Hoy** | Tareas del día y atrasadas, progreso, hábitos que tocan hoy. Captura rápida: `Calificar parcial mañana 3pm #docencia !` |
-| **Tareas** | Filtros (próximas, hoy, todas, sin fecha, hechas), **categorías** con color (Pagos, Personal, Universidad, Maestría, Casa… editables), **subtareas** con avance, prioridad, hora, repetición (diaria, lunes a viernes, semanal, mensual) |
+| **Tareas** | Vista **Tablero** (columnas por categoría, arrastrar tarjetas entre columnas y reordenar; en el celular mantener presionada) o **Lista**. Selección múltiple para eliminar, marcar hechas o mover. Subtareas, prioridad, hora, repetición (diaria, lunes a viernes, semanal, mensual) |
 | **Recordatorios** | Aviso el mismo día o días antes, a una hora. Se repite (30 min, 1 h, 3 h o diario) **hasta que marques la tarea como hecha**. Botones *Marcar hecha* y *Posponer 1 h* en la notificación; más opciones al abrirla |
 | **Pagos** | Una tarea puede tener *Valor a pagar*: al marcarla hecha pregunta cuánto pagaste y lo registra como gasto. Si es mensual, pasa sola al mes siguiente con su aviso |
 | **Finanzas** | Saldo inicial (cuánto tienes hoy) y **Disponible** acumulado: saldo + ingresos − gastos. Gastos e ingresos por mes con categorías y comparación. **Deudas** que debo y que me deben, con abonos. **Ahorros** con valor actual, meta opcional y aportes o retiros. CSV del mes para Excel |
-| **Hábitos** | Días de la semana, racha, % de cumplimiento en 30 días, mapa de las últimas 5 semanas |
 | **Notas** | Cuadernos (= categorías), Markdown con vista previa, **imágenes** (cámara, galería, pegar o arrastrar; se comprimen a ~100–250 KB), `#etiquetas`, búsqueda, fijar, plantilla de apunte de clase, casillas `- [ ]` que se convierten en tareas |
 | **Importar** | Varios `.md` / `.txt` a la vez o un `.zip` (con imágenes), vista previa, detección de duplicados, cuadernos según la carpeta |
 | **Compartir** | En Android, la app aparece en el menú *Compartir*: textos y archivos `.md` llegan directo |
 | **Exportar** | Notas en Markdown (.zip, una carpeta por cuaderno) y respaldo completo (.json) |
 | **Respaldo** | Sincronización con Supabase: sube y baja cambios solo; si un registro cambió en dos equipos, gana el más reciente |
 
-En pantallas anchas (computador) la app cambia sola a barra lateral, lista y editor de notas lado a lado, y atajos de teclado (`N`, `/`, `1`–`5`, `Ctrl+S`).
+En pantallas anchas (computador) la app cambia sola a barra lateral, lista y editor de notas lado a lado, y atajos de teclado (`N`, `/`, `1`–`5`, `Ctrl+S`, `Esc`).
 
 ---
 
