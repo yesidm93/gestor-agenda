@@ -163,7 +163,7 @@ export function calcularAvisarEn(t) {
 }
 
 /** Tareas cuyo aviso ya llegó y siguen pendientes */
-export const avisoActivo = (t, ahora = Date.now()) => !t.completada && !t.eliminado && t.avisarEn && t.avisarEn <= ahora;
+export const avisoActivo = (t, ahora = Date.now()) => !t.completada && !t.pausada && !t.eliminado && t.avisarEn && t.avisarEn <= ahora;
 
 // ---------------- Pegar tareas desde texto ----------------
 // Marcas que usan las apps de notas y listas al copiar como texto

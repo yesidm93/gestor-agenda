@@ -284,7 +284,7 @@ body[data-vista='hoy'] .cabecera-movil h1 { visibility: hidden; }
 .prio-alta .check::before { border-color: var(--vencido); border-width: 2.5px; }
 .prio-baja .check::before { border-style: dashed; }
 .check:hover::before { background: var(--suave); }
-.tarea.hecha .check::before, .tarea.tachando .check::before {
+.tarea.hecha .check::before, .tarea.tachando .check::before, .tarjeta.hecha .check::before, .tarjeta.tachando .check::before {
   background: var(--hecho) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12.5 4 4 8-9'/%3E%3C/svg%3E") center/16px no-repeat;
   border-color: var(--hecho);
 }
@@ -300,8 +300,8 @@ body[data-vista='hoy'] .cabecera-movil h1 { visibility: hidden; }
   transition: background-size 0.4s cubic-bezier(0.6, 0, 0.3, 1);
   -webkit-box-decoration-break: clone; box-decoration-break: clone;
 }
-.tarea.tachando .marca { background-size: 100% 100%; }
-.tarea.hecha .marca { background-size: 100% 100%; color: var(--grafito); background-image: linear-gradient(transparent 52%, color-mix(in srgb, var(--resaltador) 45%, transparent) 52%, color-mix(in srgb, var(--resaltador) 45%, transparent) 88%, transparent 88%); }
+.tarea.tachando .marca, .tarjeta.tachando .marca { background-size: 100% 100%; }
+.tarea.hecha .marca, .tarjeta.hecha .marca { background-size: 100% 100%; color: var(--grafito); background-image: linear-gradient(transparent 52%, color-mix(in srgb, var(--resaltador) 45%, transparent) 52%, color-mix(in srgb, var(--resaltador) 45%, transparent) 88%, transparent 88%); }
 .tarea-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--t-xs); color: var(--grafito); }
 .tarea-meta > span { display: inline-flex; align-items: center; gap: 5px; }
 .tarea-meta svg { width: 13px; height: 13px; }
@@ -920,3 +920,22 @@ body.modo-sel .tarjeta { cursor: pointer; }
   body[data-vista='tareas'] [data-accion='seleccionar'] span { display: none; }
 }
 body.arrastrando-tarjeta .tablero { scroll-snap-type: none; }
+
+/* Tablero por estado: etiqueta de categoría en cada tarjeta */
+.etiqueta-cat {
+  justify-self: start; display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 8px; border-radius: 99px; font-size: 0.72rem; font-weight: 700;
+  color: color-mix(in srgb, var(--c) 78%, var(--tinta)); background: color-mix(in srgb, var(--c) 16%, var(--superficie));
+}
+[data-tema='oscuro'] .etiqueta-cat { color: color-mix(in srgb, var(--c) 60%, #fff); background: color-mix(in srgb, var(--c) 28%, var(--superficie)); }
+.meta-pausada { color: #B06A12; font-weight: 700; }
+[data-tema='oscuro'] .meta-pausada { color: #F0A84B; }
+.btn-agregar-col { width: 100%; height: 38px; margin-top: 8px; padding: 0 10px; border: 0; border-radius: 9px; background: none; color: var(--grafito); text-align: left; cursor: pointer; font-size: 0.93rem; }
+.btn-agregar-col:hover { background: color-mix(in srgb, var(--superficie) 60%, transparent); color: var(--tinta); }
+.columna[data-col='terminadas'] .tarjeta { cursor: grab; }
+
+/* Columnas a la misma altura: el espacio vacío de abajo también recibe tarjetas */
+.tablero { align-items: stretch; min-height: 55vh; }
+.columna { display: flex; flex-direction: column; }
+
+@media (min-width: 900px) { .columna { flex: 1 1 0; min-width: 250px; } }

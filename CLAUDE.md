@@ -11,6 +11,6 @@ PWA personal (tareas en tablero, recordatorios, notas, finanzas) publicada con G
 - La función `supabase/functions/avisos/index.ts` se despliega a mano desde el panel de Supabase (Verify JWT desactivado).
 - Imágenes de notas: tipo `imagenes` (pesado: en memoria solo metadatos, `dataUrl` en IndexedDB; se sincroniza en lotes de 4 con cursor propio). En el texto se escriben `![foto N](img:N)` y la nota guarda `imagenes: { N: uuid }`.
 - La sección Hábitos se quitó de la interfaz (el tipo `habitos` sigue en la base para no perder datos).
-- Tablero: `js/tablero.js` (arrastrar con mouse o presión larga); el orden de cada tarjeta es `orden ?? creadoEn`.
+- Tablero por estado (`estadoTarea`: terminadas › pausadas › repetitivas › por hacer); categoría como etiqueta y filtro. `js/tablero.js` arrastra con mouse o presión larga; orden de tarjeta `orden ?? creadoEn`. Las tareas `pausada` no salen en Hoy ni avisan.
 - Plantilla de apuntes de clase: nota oculta con `plantilla: 'clase'`; usar `notasReales()` para listar notas.
 - Diseño móvil compacto (bloque "CELULAR" al final de `styles.css`); probar en 360 px y 393 px de ancho sin desbordes horizontales.

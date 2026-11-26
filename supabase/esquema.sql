@@ -127,6 +127,7 @@ as $$
   where r.tipo = 'tareas'
     and not r.eliminado
     and coalesce((r.data->>'completada')::boolean, false) = false
+    and coalesce((r.data->>'pausada')::boolean, false) = false
     and coalesce(r.data->>'avisarEn', '') ~ '^[0-9]+$'
     and (r.data->>'avisarEn')::bigint <= (extract(epoch from now()) * 1000)::bigint
     and (

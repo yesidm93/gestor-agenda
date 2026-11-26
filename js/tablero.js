@@ -4,7 +4,7 @@
 // Táctil: hay que mantener presionada la tarjeta ~0,3 s; si el dedo se mueve antes,
 // se interpreta como desplazamiento normal de la pantalla.
 // La tarjeta real se mueve dentro del DOM para mostrar dónde quedará; al soltar se
-// llama a alSoltar(id, areaId, idAnterior, idSiguiente).
+// llama a alSoltar(id, columna, idAnterior, idSiguiente).
 
 let estado = null;
 let quitarClic = false;
@@ -43,7 +43,7 @@ function empezar() {
   estado.activo = true;
   estado.dx = estado.x0 - r.left;
   estado.dy = estado.y0 - r.top;
-  estado.origen = card.closest('.columna')?.dataset.area ?? '';
+  estado.origen = card.closest('.columna')?.dataset.col ?? '';
   const fantasma = card.cloneNode(true);
   fantasma.classList.add('tarjeta-fantasma');
   fantasma.style.width = `${r.width}px`;
@@ -79,7 +79,9 @@ function ubicarFantasma() {
 function ubicarTarjeta() {
   const { card, x, y } = estado;
   const bajo = document.elementFromPoint(x, y);
-  const col = bajo?.closest?.('.columna[data-area]');
+  // La columna bajo el dedo; si se suelta en un espacio vacío, la que esté a esa altura horizontal
+  const col = bajo?.closest?.('.columna[data-col]') || [...document.querySelectorAll('.columna[data-col]')]
+    .find(c => { const r = c.getBoundingClientRect(); return x >= r.left && x <= r.right; });
   if (!col) return;
   const lista = col.querySelector('.tarjetas');
   const otras = [...lista.children].filter(el => el !== card && el.classList.contains('tarjeta'));
@@ -123,7 +125,7 @@ function terminar(guardar) {
       const col = card.closest('.columna');
       const ant = card.previousElementSibling?.classList.contains('tarjeta') ? card.previousElementSibling.dataset.id : null;
       const sig = card.nextElementSibling?.classList.contains('tarjeta') ? card.nextElementSibling.dataset.id : null;
-      opciones.alSoltar(id, col?.dataset.area ?? estado.origen, ant, sig);
+      opciones.alSoltar(id, col?.dataset.col ?? estado.origen, ant, sig);
     }
   }
   estado = null;

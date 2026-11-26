@@ -44,7 +44,8 @@ const ui = {
   verSaldadas: false,
   desplegadas: new Set(),
   seleccion: null,
-  filtroTablero: 'todas',
+  catTablero: null,
+  verTodasTerminadas: false,
   visibles: [],
 };
 
@@ -237,6 +238,7 @@ function metaTarea(t, { mostrarFecha = true, mostrarArea = true } = {}) {
   if (t.aviso?.activo && t.avisarEn && !t.completada) meta.push(`<span class="${avisoActivo(t) ? 'meta-aviso' : ''}">${I.campanaMini}${textoAviso(t)}</span>`);
   if (t.pago?.monto) meta.push(`<span>${I.moneda}${fin.pesos(t.pago.monto)}</span>`);
   if (t.notas) meta.push('<span class="meta-notas">con notas</span>');
+  if (t.pausada && !t.completada) meta.unshift('<span class="meta-pausada">Pausada</span>');
   return meta;
 }
 
@@ -318,8 +320,8 @@ function vistaHoy() {
   const h = hoy();
   const d = parseYmd(h);
   const tareas = db.lista('tareas');
-  const vencidas = tareas.filter(esVencida).sort(ordenarTareas);
-  const deHoy = tareas.filter(t => !t.completada && t.fecha === h).sort(ordenarTareas);
+  const vencidas = tareas.filter(t => esVencida(t) && !t.pausada).sort(ordenarTareas);
+  const deHoy = tareas.filter(t => !t.completada && !t.pausada && t.fecha === h).sort(ordenarTareas);
   const hechasHoy = tareas.filter(t => t.completada && t.completadaEn && new Date(t.completadaEn).toDateString() === new Date().toDateString())
     .sort((a, b) => b.completadaEn - a.completadaEn);
   const conAviso = tareas.filter(t => avisoActivo(t)).sort((a, b) => a.avisarEn - b.avisarEn);
@@ -386,8 +388,9 @@ function vistaTareas() {
   document.body.classList.toggle('modo-tablero', modo === 'tablero');
   const scrollTablero = $('#tablero')?.scrollLeft || 0;
   let tareas = db.lista('tareas');
+  const todasTablero = tareas.filter(t => !ui.catTablero || (ui.catTablero === 'ninguna' ? !t.areaId || !area(t.areaId) : t.areaId === ui.catTablero));
   if (ui.areaId && modo !== 'tablero') tareas = tareas.filter(t => t.areaId === ui.areaId);
-  const f = modo === 'tablero' ? ui.filtroTablero : ui.filtro;
+  const f = ui.filtro;
   if (f === 'hechas') tareas = tareas.filter(t => t.completada).sort((a, b) => (b.completadaEn || 0) - (a.completadaEn || 0));
   else {
     tareas = tareas.filter(t => !t.completada);
@@ -415,8 +418,8 @@ function vistaTareas() {
     hechas: 'Aún no has completado tareas.',
   };
 
-  ui.visibles = tareas.map(t => t.id);
   const tablero = modo === 'tablero';
+  ui.visibles = (tablero ? todasTablero : tareas).map(t => t.id);
   $('#vista').innerHTML = `
     <header class="vista-cabecera">
       <h1>${a && !tablero ? `<i class="punto grande" style="--c:${a.color}"></i>${esc(a.nombre)}` : 'Tareas'}</h1>
@@ -431,10 +434,14 @@ function vistaTareas() {
       </div>
     </header>
     ${tablero ? '' : capturaRapida(a ? `Agregar tarea en ${a.nombre}` : 'Agregar tarea', 'tareas')}
-    <div class="filtros" role="tablist" aria-label="Filtrar tareas">
+    ${tablero ? `<div class="filtros chips-cat" role="group" aria-label="Filtrar por categoría">
+      <button class="filtro" data-accion="cat-tablero" data-valor="" aria-pressed="${!ui.catTablero}">Todas</button>
+      ${areasOrdenadas().map(x => `<button class="filtro" data-accion="cat-tablero" data-valor="${x.id}" aria-pressed="${x.id === ui.catTablero}"><i class="punto" style="--c:${x.color}"></i>${esc(x.nombre)}</button>`).join('')}
+      ${db.lista('tareas').some(t => !t.areaId || !area(t.areaId)) ? `<button class="filtro" data-accion="cat-tablero" data-valor="ninguna" aria-pressed="${ui.catTablero === 'ninguna'}">Sin categoría</button>` : ''}
+    </div>` : `<div class="filtros" role="tablist" aria-label="Filtrar tareas">
       ${Object.entries(FILTROS).map(([k, v]) => `<button role="tab" class="filtro" data-accion="filtro" data-valor="${k}" aria-selected="${f === k}">${v}</button>`).join('')}
-    </div>
-    ${tablero ? htmlTablero(tareas, f) : `<div class="filtros chips-cat solo-movil" role="group" aria-label="Filtrar por categoría">
+    </div>`}
+    ${tablero ? htmlTablero(todasTablero) : `<div class="filtros chips-cat solo-movil" role="group" aria-label="Filtrar por categoría">
       <button class="filtro" data-accion="quitar-area" aria-pressed="${!ui.areaId}">Todas</button>
       ${areasOrdenadas().map(x => `<button class="filtro" data-accion="filtrar-area" data-id="${x.id}" aria-pressed="${x.id === ui.areaId}"><i class="punto" style="--c:${x.color}"></i>${esc(x.nombre)}</button>`).join('')}
     </div>
@@ -443,7 +450,7 @@ function vistaTareas() {
         ${listaTareas(arr, { mostrarFecha: k === 'Atrasadas' || f === 'hechas' })}</section>`).join('')
       : `<p class="vacio grande">${vacios[f]}</p>`}`}`;
   if (tablero) { const tb = $('#tablero'); if (tb) tb.scrollLeft = scrollTablero; }
-  else $('.chips-cat [aria-pressed="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  $('.chips-cat [aria-pressed="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
 
 // ---------------------------------------------------------------------
@@ -451,60 +458,120 @@ function vistaTareas() {
 // ---------------------------------------------------------------------
 const claveOrden = t => t.orden ?? t.creadoEn ?? 0;
 
+/** Columna del tablero según el estado de la tarea */
+const COLUMNAS = [
+  { k: 'porhacer', nombre: 'Por hacer', color: '#3B6FD8' },
+  { k: 'pausadas', nombre: 'Pausadas', color: '#D9822B' },
+  { k: 'repetitivas', nombre: 'Repetitivas', color: '#8A5CD0' },
+  { k: 'terminadas', nombre: 'Terminadas', color: '#2E8B6A' },
+];
+const estadoTarea = t => (t.completada ? 'terminadas' : t.pausada ? 'pausadas' : t.recurrencia ? 'repetitivas' : 'porhacer');
+const MAX_TERMINADAS = 15;
+
 function htmlTarjeta(t) {
   const meta = metaTarea(t, { mostrarArea: false });
+  const a = area(t.areaId);
   const subs = t.subtareas || [];
   const hechasSub = subs.filter(x => x.hecha).length;
   if (subs.length) meta.push(`<span class="${hechasSub === subs.length ? 'meta-subs-ok' : ''}">${I.casilla}${hechasSub}/${subs.length}</span>`);
-  return `<li class="tarjeta prio-${t.prioridad || 'media'}${t.completada ? ' hecha' : ''}${esVencida(t) ? ' vencida' : ''}${ui.seleccion?.has(t.id) ? ' seleccionada' : ''}" data-id="${t.id}">
+  if (t.completada && t.completadaEn) meta.push(`<span>Terminada ${fechaAmigable(ymdLocal(t.completadaEn)).toLowerCase()}</span>`);
+  return `<li class="tarjeta prio-${t.prioridad || 'media'}${t.completada ? ' hecha' : ''}${esVencida(t) && !t.pausada ? ' vencida' : ''}${ui.seleccion?.has(t.id) ? ' seleccionada' : ''}" data-id="${t.id}">
     ${htmlCheck(t)}
     <button class="tarjeta-cuerpo" data-accion="editar-tarea" data-id="${t.id}">
+      ${a ? `<span class="etiqueta-cat" style="--c:${a.color}">${esc(a.nombre)}</span>` : ''}
       <span class="tarjeta-titulo"><span class="marca">${esc(t.titulo)}</span></span>
       ${meta.length ? `<span class="tarea-meta">${meta.join('')}</span>` : ''}
     </button>
   </li>`;
 }
 
-function htmlTablero(tareas, f) {
-  const sinCat = t => !t.areaId || !area(t.areaId);
-  const cols = areasOrdenadas().map(a => ({ id: a.id, nombre: a.nombre, color: a.color, arr: tareas.filter(t => t.areaId === a.id) }));
-  const sueltas = tareas.filter(sinCat);
-  if (sueltas.length) cols.unshift({ id: '', nombre: 'Sin categoría', color: '#9AA3B5', arr: sueltas });
-  const ayuda = escritorio() ? 'Arrastra las tarjetas para moverlas entre columnas.' : 'Mantén presionada una tarjeta para moverla a otra columna.';
+function htmlTablero(tareas) {
+  const ayuda = escritorio() ? 'Arrastra las tarjetas para cambiar su estado o su orden.' : 'Mantén presionada una tarjeta para moverla a otra columna.';
+  const porCol = Object.fromEntries(COLUMNAS.map(c => [c.k, []]));
+  tareas.forEach(t => porCol[estadoTarea(t)].push(t));
   return `
     <p class="ayuda ayuda-tablero">${ayuda}</p>
     <div class="tablero" id="tablero">
-      ${cols.map(c => {
-        const arr = c.arr.slice().sort((x, y) => claveOrden(x) - claveOrden(y));
-        return `<section class="columna" data-area="${c.id}" style="--c:${c.color}" aria-label="${esc(c.nombre)}">
-          <header class="columna-cab">
-            <i class="punto" style="--c:${c.color}"></i><h2>${esc(c.nombre)}</h2><span class="cuenta">${arr.length}</span>
-            ${c.id ? `<button class="btn-icono" data-accion="editar-area" data-id="${c.id}" aria-label="Editar categoría ${esc(c.nombre)}">${I.lapiz}</button>` : ''}
-          </header>
+      ${COLUMNAS.map(c => {
+        let arr = porCol[c.k];
+        const total = arr.length;
+        if (c.k === 'terminadas') {
+          arr = arr.sort((x, y) => (y.completadaEn || 0) - (x.completadaEn || 0));
+          if (!ui.verTodasTerminadas) arr = arr.slice(0, MAX_TERMINADAS);
+        } else {
+          arr = arr.sort((x, y) => claveOrden(x) - claveOrden(y));
+        }
+        let pie = '';
+        if (!ui.seleccion) {
+          if (c.k === 'porhacer' || c.k === 'pausadas') pie = `<form class="tarjeta-nueva" data-form="tarjeta-nueva" data-col="${c.k}">
+            <input name="texto" placeholder="+ Agregar tarea" autocomplete="off" enterkeyhint="done" aria-label="Agregar tarea en ${c.nombre}"></form>`;
+          if (c.k === 'repetitivas') pie = `<button class="btn-agregar-col" data-accion="nueva-repetitiva">+ Agregar tarea que se repite</button>`;
+          if (c.k === 'terminadas' && total > MAX_TERMINADAS) pie = `<button class="btn-agregar-col" data-accion="ver-terminadas">${ui.verTodasTerminadas ? 'Ver solo las recientes' : `Ver las ${total} terminadas`}</button>`;
+        }
+        return `<section class="columna" data-col="${c.k}" style="--c:${c.color}" aria-label="${c.nombre}">
+          <header class="columna-cab"><i class="punto" style="--c:${c.color}"></i><h2>${c.nombre}</h2><span class="cuenta">${total}</span></header>
           <ul class="tarjetas">${arr.map(htmlTarjeta).join('')}</ul>
-          ${f === 'hechas' || ui.seleccion ? '' : `<form class="tarjeta-nueva" data-form="tarjeta-nueva" data-area="${c.id}">
-            <input name="texto" placeholder="+ Agregar tarea" autocomplete="off" enterkeyhint="done" aria-label="Agregar tarea en ${esc(c.nombre)}">
-          </form>`}
+          ${pie}
         </section>`;
       }).join('')}
-      <section class="columna columna-nueva"><button class="btn" data-accion="nueva-area">${I.mas}Nueva categoría</button></section>
     </div>`;
 }
 
-/** Al soltar una tarjeta: cambia de categoría y queda entre sus vecinas */
-async function soltarTarjeta(id, areaId, antId, sigId) {
+function calcularOrden(antId, sigId) {
+  const ant = antId && db.obtener('tareas', antId), sig = sigId && db.obtener('tareas', sigId);
+  if (ant && sig) return (claveOrden(ant) + claveOrden(sig)) / 2;
+  if (ant) return claveOrden(ant) + 1000;
+  if (sig) return claveOrden(sig) - 1000;
+  return Date.now();
+}
+
+/** Al soltar una tarjeta: cambia de estado según la columna y queda entre sus vecinas */
+async function soltarTarjeta(id, col, antId, sigId) {
   const t = db.obtener('tareas', id);
   if (!t) return;
-  const ant = antId && db.obtener('tareas', antId), sig = sigId && db.obtener('tareas', sigId);
-  let orden;
-  if (ant && sig) orden = (claveOrden(ant) + claveOrden(sig)) / 2;
-  else if (ant) orden = claveOrden(ant) + 1000;
-  else if (sig) orden = claveOrden(sig) - 1000;
-  else orden = Date.now();
-  const nuevaArea = areaId || null;
-  const cambio = (t.areaId || null) !== nuevaArea;
-  await db.guardar('tareas', { ...t, areaId: nuevaArea, orden });
-  if (cambio) toast(`Movida a ${nuevaArea ? area(nuevaArea)?.nombre : 'Sin categoría'}`, { texto: 'Deshacer', fn: () => db.guardar('tareas', { ...db.obtener('tareas', id), areaId: t.areaId || null, orden: t.orden }) });
+  const antes = estadoTarea(t);
+  const orden = calcularOrden(antId, sigId);
+  if (col === antes) return db.guardar('tareas', { ...t, orden });
+  let n = { ...t, orden };
+  if (col === 'porhacer') {
+    n = { ...n, completada: false, completadaEn: null, pausada: false };
+    if (antes === 'repetitivas') n.recurrencia = '';
+  } else if (col === 'pausadas') {
+    n = { ...n, pausada: true, completada: false, completadaEn: null };
+  } else if (col === 'terminadas') {
+    n = { ...n, completada: true, completadaEn: Date.now(), pausada: false, avisarEn: null, recurrenciaAnterior: t.recurrencia || '', recurrencia: '' };
+  } else if (col === 'repetitivas') {
+    if (!t.recurrencia && !t.recurrenciaAnterior) { render(); return abrirRepeticion(t, orden); }
+    n = { ...n, recurrencia: t.recurrencia || t.recurrenciaAnterior, completada: false, completadaEn: null, pausada: false, fecha: t.fecha || hoy() };
+  }
+  if (col !== 'terminadas') n.avisarEn = calcularAvisarEn(n);
+  await db.guardar('tareas', n);
+  if (col === 'terminadas') avisos.cerrarNotificacion(id);
+  const nombre = COLUMNAS.find(c => c.k === estadoTarea(n))?.nombre;
+  toast(`Movida a ${nombre}`, { texto: 'Deshacer', fn: () => db.guardar('tareas', { ...t }) });
+}
+
+/** Una tarea pasa a Repetitivas: se elige cada cuánto */
+function abrirRepeticion(t, orden) {
+  abrirDialogo(`
+    <div class="formulario">
+      <header class="dlg-cabecera"><h2>¿Cada cuánto se repite?</h2>
+        <button type="button" class="btn-icono" data-accion="cerrar-dialogo" aria-label="Cerrar">${I.cerrar}</button></header>
+      <p class="ayuda">«${esc(t.titulo)}» pasará a Repetitivas.</p>
+      <div class="opciones-mover">
+        ${Object.entries(RECURRENCIAS).filter(([k]) => k).map(([k, v]) => `<button class="btn" data-accion="fijar-repeticion" data-id="${t.id}" data-valor="${k}" data-orden="${orden}">${v}</button>`).join('')}
+      </div>
+    </div>`);
+}
+
+async function fijarRepeticion(id, rec, orden) {
+  const t = db.obtener('tareas', id);
+  if (!t) return;
+  cerrarDialogo();
+  const n = { ...t, recurrencia: rec, fecha: t.fecha || hoy(), completada: false, completadaEn: null, pausada: false, orden: Number(orden) || t.orden };
+  n.avisarEn = calcularAvisarEn(n);
+  await db.guardar('tareas', n);
+  toast(`Ahora se repite: ${RECURRENCIAS[rec].toLowerCase()}`, { texto: 'Deshacer', fn: () => db.guardar('tareas', { ...t }) });
 }
 
 // ---------------------------------------------------------------------
@@ -603,6 +670,7 @@ function abrirTarea(id, valores = {}) {
         <label class="campo"><span>Repetir</span><select name="recurrencia">
           ${Object.entries(RECURRENCIAS).map(([k, v]) => `<option value="${k}" ${k === (t.recurrencia || '') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       </div>
+      <label class="casilla"><input type="checkbox" name="pausada" ${t.pausada ? 'checked' : ''}><span>Pausada (no aparece en Hoy y no avisa)</span></label>
       <div class="campo"><span id="lbl-prio">Prioridad</span><div class="segmentado" role="radiogroup" aria-labelledby="lbl-prio">
         ${['alta', 'media', 'baja'].map(p => `<label><input type="radio" name="prioridad" value="${p}" ${p === (t.prioridad || 'media') ? 'checked' : ''}><span>${p[0].toUpperCase() + p.slice(1)}</span></label>`).join('')}
       </div></div>
@@ -659,6 +727,7 @@ async function guardarTareaDesdeForm(form) {
     recurrencia: fd.get('recurrencia') || '',
     prioridad: fd.get('prioridad') || 'media',
     notas: fd.get('notas').trim(),
+    pausada: fd.get('pausada') === 'on',
     subtareas: (() => {
       const ids = fd.getAll('subId'), titulos = fd.getAll('subTitulo'), hechas = new Set(fd.getAll('subHecha'));
       const pendiente = $('#nueva-sub')?.value.trim();
@@ -1970,6 +2039,10 @@ async function alHacerClic(ev) {
   const { accion, id, valor } = el.dataset;
   switch (accion) {
     case 'alternar-tarea': return alternarTarea(id, el);
+    case 'cat-tablero': ui.catTablero = valor || null; return render();
+    case 'ver-terminadas': ui.verTodasTerminadas = !ui.verTodasTerminadas; return render();
+    case 'nueva-repetitiva': return abrirTarea(null, { recurrencia: 'mensual', fecha: hoy(), areaId: ui.catTablero && ui.catTablero !== 'ninguna' ? ui.catTablero : null });
+    case 'fijar-repeticion': return fijarRepeticion(id, valor, el.dataset.orden);
     case 'seleccionar': ui.seleccion = ui.seleccion ? null : new Set(); return render();
     case 'sel-tarea': { ui.seleccion.has(id) ? ui.seleccion.delete(id) : ui.seleccion.add(id); return render(); }
     case 'sel-todas': case 'sel-eliminar': case 'sel-hechas': case 'sel-mover': case 'sel-mover-a': return accionSeleccion(accion, valor);
@@ -1991,7 +2064,7 @@ async function alHacerClic(ev) {
       return toast(`${v.length} tarea${v.length > 1 ? 's pasadas' : ' pasada'} a hoy`);
     }
     case 'ver-hechas': ui.verHechasHoy = !ui.verHechasHoy; return render();
-    case 'filtro': if (ui.vista === 'tareas' && modoTareas() === 'tablero') ui.filtroTablero = valor; else ui.filtro = valor; return render();
+    case 'filtro': ui.filtro = valor; return render();
     case 'filtrar-area': ui.areaId = id; if (!['hechas', 'sinfecha'].includes(ui.filtro)) ui.filtro = 'todas'; return ir('tareas');
     case 'quitar-area': ui.areaId = null; return render();
     case 'nueva-nota': return nuevaNota();
@@ -2181,12 +2254,12 @@ document.addEventListener('submit', async ev => {
     const texto = f.texto.value.trim();
     if (!texto) return;
     const p = parsearRapido(texto, areasOrdenadas());
-    const areaCol = f.dataset.area || null;
+    const catFiltro = ui.catTablero && ui.catTablero !== 'ninguna' ? ui.catTablero : null;
     await db.guardar('tareas', {
       id: uid(), titulo: p.titulo || texto, notas: '', prioridad: p.prioridad, hora: p.hora, recurrencia: '', completada: false,
-      areaId: p.areaId || areaCol, fecha: p.fecha || (p.hora ? hoy() : null), orden: Date.now(),
+      pausada: f.dataset.col === 'pausadas', areaId: p.areaId || catFiltro, fecha: p.fecha || (p.hora ? hoy() : null), orden: Date.now(),
     });
-    $(`.columna[data-area="${f.dataset.area}"] .tarjeta-nueva input`)?.focus();
+    $(`.columna[data-col="${f.dataset.col}"] .tarjeta-nueva input`)?.focus();
     return;
   }
   if (tipo === 'sub-rapida') {
